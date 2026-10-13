@@ -6,7 +6,7 @@ A desktop SQL shell for MySQL/MariaDB with background query execution, disk-back
 
 Push a commit to `main` or run the GitHub Actions workflow to compile and test the app. If release-signing secrets are not set, CI builds an Android debug APK and unsigned Windows files as test artifacts only; it deliberately does not publish them as release downloads.
 
-To publish a release, configure the signing secrets in `SIGNING.md` first. The workflow then produces a release-signed Android APK, signs and verifies the Windows executable(s) and installer, and publishes those files. Android release signing and Windows publisher code signing use separate keys. A Windows signature does not guarantee SmartScreen warnings disappear immediately.
+To publish an Android release, configure all four Android signing secrets in `SIGNING.md`; the workflow verifies and publishes the release-signed APK. Windows assets remain excluded until a trusted Windows code-signing certificate is configured and all Windows signatures verify. Android and Windows use separate signing identities. A Windows signature does not guarantee SmartScreen warnings disappear immediately.
 
 ## App branding
 
@@ -14,7 +14,7 @@ The Windows executable and installer use the shared MySQL IDLE terminal mark. Th
 
 ## Release signing
 
-Follow [SIGNING.md](SIGNING.md) to configure the Android release keystore and trusted Windows code-signing certificate in GitHub Actions secrets. Private keys and passwords must never be committed to the repository. The release workflow will skip publication rather than publish unsigned release assets.
+Follow [SIGNING.md](SIGNING.md) to configure Android release signing and, later, trusted Windows code signing in GitHub Actions secrets. Private keys and passwords must never be committed to the repository. The workflow never publishes a debug APK or unsigned Windows binaries as release assets.
 
 ## Desktop setup from source
 
