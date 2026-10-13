@@ -1,1 +1,1 @@
-CI run 4: current Android SDK setup and loopback-only mobile integration tests.
+CI run 7: Windows desktop unit tests; Linux mobile HTTP integration tests; build EXE and APK.
