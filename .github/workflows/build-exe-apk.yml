@@ -1,0 +1,160 @@
+name: Build Windows EXE and Android APK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "bootstrap/trigger-build.txt"
+      - "*.py"
+      - "*.spec"
+      - "requirements.txt"
+      - "MySQLIDLE.iss"
+      - "build_windows.ps1"
+      - "android-app/**"
+      - "tools/restore_sources.py"
+      - ".github/workflows/build-exe-apk.yml"
+  pull_request:
+    paths:
+      - "bootstrap/trigger-build.txt"
+      - "*.py"
+      - "*.spec"
+      - "requirements.txt"
+      - "MySQLIDLE.iss"
+      - "build_windows.ps1"
+      - "android-app/**"
+      - "tools/restore_sources.py"
+      - ".github/workflows/build-exe-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore-sources:
+    name: Expand source bundle into repository
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore source files
+        run: python tools/restore_sources.py
+      - name: Commit restored sources
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No source restoration changes."
+          else
+            git commit -m "Restore MySQL IDLE source files"
+            git push
+          fi
+
+  build-windows:
+    name: Build Windows EXE and installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Restore source payload when bootstrapping an empty repo
+        run: python tools/restore_sources.py
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+      - name: Run regression tests
+        run: python -m unittest -v test_mysql_idle.py test_mobile_companion.py
+      - name: Compile Python modules
+        run: python -m py_compile mysql_idle.py mobile_companion.py test_mysql_idle.py test_mobile_companion.py
+      - name: Build one-folder desktop app
+        run: python -m PyInstaller --clean --noconfirm mysql_idle.spec
+      - name: Build portable single-file EXE
+        run: python -m PyInstaller --clean --noconfirm mysql_idle_portable.spec
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Build Windows installer and folder archive
+        shell: pwsh
+        run: |
+          $iscc = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($iscc) {
+            & $iscc "MySQLIDLE.iss"
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          } else {
+            Write-Warning "Inno Setup was not found; portable EXE will still be available."
+          }
+          if (Test-Path "dist\mysql_idle") {
+            Compress-Archive -Path "dist\mysql_idle\*" -DestinationPath "dist\MySQLIDLE-Folder.zip" -Force
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MySQLIDLE-Windows
+          path: |
+            dist/MySQLIDLE_Portable.exe
+            dist/installer/MySQLIDLE-Setup.exe
+            dist/MySQLIDLE-Folder.zip
+            dist/mysql_idle/**
+          if-no-files-found: error
+          retention-days: 30
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore source payload when bootstrapping an empty repo
+        run: python tools/restore_sources.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build installable debug APK
+        working-directory: android-app
+        run: gradle --no-daemon assembleDebug
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp android-app/app/build/outputs/apk/debug/app-debug.apk dist/MySQLIDLE-Mobile-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MySQLIDLE-Android
+          path: dist/MySQLIDLE-Mobile-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Publish versioned release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: MySQLIDLE-*
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-assets/**/*
