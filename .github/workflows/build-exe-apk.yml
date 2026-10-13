@@ -67,6 +67,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
       - name: Run regression tests
+        continue-on-error: true
         shell: pwsh
         run: |
           @'
@@ -83,6 +84,13 @@ jobs:
             throw 'Desktop regression tests failed.'
           }
           $global:LASTEXITCODE = 0
+      - name: Validate desktop regression result
+        if: always()
+        shell: pwsh
+        run: |
+          if (!(Test-Path .\\ci-test-status.txt) -or (Get-Content .\\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
+            throw 'Desktop regression tests did not pass.'
+          }
       - name: Compile Python modules
         run: python -m py_compile mysql_idle.py mobile_companion.py test_mysql_idle.py test_mobile_companion.py
       - name: Build one-folder desktop app
