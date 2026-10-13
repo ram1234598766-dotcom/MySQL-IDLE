@@ -128,9 +128,7 @@ jobs:
           name: MySQLIDLE-Windows
           path: |
             dist/MySQLIDLE_Portable.exe
-            dist/installer/MySQLIDLE-Setup.exe
             dist/MySQLIDLE-Folder.zip
-            dist/mysql_idle/**
           if-no-files-found: error
           retention-days: 30
 
@@ -188,4 +186,7 @@ jobs:
           name: MySQL IDLE 3.0 Build ${{ github.run_number }}
           prerelease: true
           generate_release_notes: true
-          files: release-assets/**/*
+          files: |
+            release-assets/MySQLIDLE_Portable.exe
+            release-assets/MySQLIDLE-Folder.zip
+            release-assets/MySQLIDLE-Mobile-debug.apk
