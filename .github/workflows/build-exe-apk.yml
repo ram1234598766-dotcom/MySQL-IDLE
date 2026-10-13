@@ -6,6 +6,7 @@ on:
     tags: ["v*"]
     paths:
       - "bootstrap/trigger-build.txt"
+      - ".github/workflows/build-exe-apk.yml"
       - "*.py"
       - "*.spec"
       - "requirements.txt"
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - "bootstrap/trigger-build.txt"
+      - ".github/workflows/build-exe-apk.yml"
       - "*.py"
       - "*.spec"
       - "requirements.txt"
@@ -120,6 +122,10 @@ jobs:
           } else {
             Write-Warning "Inno Setup was not found; portable EXE will still be available."
           }
+          if (!(Test-Path "dist\installer\MySQLIDLE-Setup.exe")) {
+            throw "Inno Setup installer output is missing; refusing to publish an incomplete release."
+          }
+          Copy-Item "dist\installer\MySQLIDLE-Setup.exe" "dist\MySQLIDLE-Setup.exe" -Force
           if (Test-Path "dist\mysql_idle") {
             Compress-Archive -Path "dist\mysql_idle\*" -DestinationPath "dist\MySQLIDLE-Folder.zip" -Force
           }
