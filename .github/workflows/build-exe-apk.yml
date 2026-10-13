@@ -101,6 +101,34 @@ jobs:
         run: python -m PyInstaller --clean --noconfirm mysql_idle.spec
       - name: Build portable single-file EXE
         run: python -m PyInstaller --clean --noconfirm mysql_idle_portable.spec
+      - name: Sign Windows application executables
+        if: env.WINDOWS_SIGNING_ENABLED == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $certificatePath = Join-Path $env:RUNNER_TEMP "mysqlidle-code-signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signtool) { throw "Windows SDK SignTool was not found on this runner." }
+            $files = @("dist\MySQLIDLE_Portable.exe")
+            if (Test-Path "dist\mysql_idle") {
+              $files += Get-ChildItem "dist\mysql_idle" -Filter "*.exe" -File -Recurse | ForEach-Object { $_.FullName }
+            }
+            foreach ($file in $files) {
+              if (!(Test-Path $file)) { throw "Expected executable to sign was not found: $file" }
+              & $signtool.FullName sign /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd SHA256 /tr https://timestamp.digicert.com /td SHA256 /v $file
+              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $file with exit code $LASTEXITCODE" }
+              & $signtool.FullName verify /pa /v $file
+              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $file" }
+            }
+          } finally {
+            Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
+          }
       - name: Install Inno Setup
         shell: pwsh
         run: |
@@ -122,13 +150,13 @@ jobs:
             & $iscc "MySQLIDLE.iss"
             if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
           } else {
-            Write-Warning "Inno Setup was not found; portable EXE will still be available."
+            throw "Inno Setup was not found; refusing to publish an incomplete installer."
           }
           if (!(Test-Path "dist\installer\MySQLIDLE-Setup.exe")) {
             throw "Inno Setup installer output is missing; refusing to publish an incomplete release."
           }
           Copy-Item "dist\installer\MySQLIDLE-Setup.exe" "dist\MySQLIDLE-Setup.exe" -Force
-      - name: Sign Windows executables and installer
+      - name: Sign Windows installer
         if: env.WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
         env:
@@ -142,17 +170,12 @@ jobs:
             $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
               Sort-Object FullName -Descending | Select-Object -First 1
             if (-not $signtool) { throw "Windows SDK SignTool was not found on this runner." }
-            $files = @("dist\MySQLIDLE_Portable.exe", "dist\MySQLIDLE-Setup.exe")
-            if (Test-Path "dist\mysql_idle") {
-              $files += Get-ChildItem "dist\mysql_idle" -Filter "*.exe" -File -Recurse | ForEach-Object { $_.FullName }
-            }
-            foreach ($file in $files) {
-              if (!(Test-Path $file)) { throw "Expected executable to sign was not found: $file" }
-              & $signtool.FullName sign /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd SHA256 /tr https://timestamp.digicert.com /td SHA256 /v $file
-              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $file with exit code $LASTEXITCODE" }
-              & $signtool.FullName verify /pa /v $file
-              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $file" }
-            }
+            $file = "dist\MySQLIDLE-Setup.exe"
+            if (!(Test-Path $file)) { throw "Expected installer to sign was not found: $file" }
+            & $signtool.FullName sign /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD /fd SHA256 /tr https://timestamp.digicert.com /td SHA256 /v $file
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed for installer with exit code $LASTEXITCODE" }
+            & $signtool.FullName verify /pa /v $file
+            if ($LASTEXITCODE -ne 0) { throw "Installer signature verification failed." }
           } finally {
             Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
           }
