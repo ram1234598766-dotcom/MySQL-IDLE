@@ -70,13 +70,18 @@ jobs:
         shell: pwsh
         run: |
           @'
-          import sys, unittest
+          import unittest
           suite = unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
-          print('TEST_RESULT=' + ('PASS' if result.wasSuccessful() else 'FAIL'))
-          sys.exit(0 if result.wasSuccessful() else 1)
+          status = 'PASS' if result.wasSuccessful() else 'FAIL'
+          print('TEST_RESULT=' + status)
+          with open('ci-test-status.txt', 'w', encoding='ascii') as out:
+              out.write(status)
           '@ | Set-Content -Encoding utf8 .\\run_ci_tests.py
           python .\\run_ci_tests.py
+          if ((Get-Content .\\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
+            throw 'Desktop regression tests failed.'
+          }
       - name: Compile Python modules
         run: python -m py_compile mysql_idle.py mobile_companion.py test_mysql_idle.py test_mobile_companion.py
       - name: Build one-folder desktop app
