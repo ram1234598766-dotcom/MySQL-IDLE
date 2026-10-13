@@ -1,1 +1,1 @@
-CI run 8: explicit regression-test runner and cross-platform EXE/APK build.
+CI run 9: fix Android Kotlin compilation and deterministic Windows test status.
