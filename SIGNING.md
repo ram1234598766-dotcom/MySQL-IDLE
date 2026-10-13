@@ -1,6 +1,6 @@
 # Release signing setup
 
-The workflow never publishes the debug APK or unsigned Windows files as a GitHub Release. It builds test artifacts when signing credentials are absent, and skips release publication until both signing configurations are available.
+The workflow never publishes the debug APK or unsigned Windows files as a GitHub Release. A signed Android APK can be published on its own once all four Android secrets are configured. Windows release files are included only when the Windows signing secrets are configured and the signed Windows build succeeds.
 
 ## 1. Android release keystore
 
@@ -52,7 +52,7 @@ The certificate must be valid for code signing and include its private key. Do n
 
 ## 3. Produce a signed release
 
-After all six secrets are set, open **Actions → Build Windows EXE and Android APK → Run workflow** on `main`. The workflow will build the desktop app and release APK, sign and verify the Windows binaries and APK, and publish four release assets only after both signing configurations are present and all build jobs succeed.
+After all four Android secrets are set, open **Actions → Build Windows EXE and Android APK → Run workflow** on `main`. The workflow will build and verify the release-signed Android APK and publish it as a prerelease. Windows assets remain excluded while Windows signing is on hold. Once both Windows secrets are configured and the Windows signatures verify, the release will also include the signed Windows binaries and installer.
 
 Check the workflow run for successful signature-verification steps. The release APK will be named `MySQLIDLE-Mobile-release.apk`. Windows downloads keep their regular filenames, and Authenticode signatures must verify and identify your publisher certificate.
 
