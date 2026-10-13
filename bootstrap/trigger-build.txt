@@ -1,1 +1,1 @@
-CI run 11: verified Windows tests, build desktop EXE and Android APK, publish assets to GitHub prerelease.
+CI run 12: build Windows EXE/installer and Android APK; validate test result file.
