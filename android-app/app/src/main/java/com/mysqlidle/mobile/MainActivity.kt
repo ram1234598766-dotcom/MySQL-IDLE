@@ -91,7 +91,7 @@ class MainActivity : Activity() {
         })
         val address = EditText(this).apply {
             hint = "http://192.168.1.10:8765"
-            singleLine = true
+            setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_URI
             imeOptions = EditorInfo.IME_ACTION_GO
