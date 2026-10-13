@@ -23,9 +23,9 @@ DARKER = (11, 18, 32)
 
 def _font(size: int, bold: bool = False):
     candidates = (
-        [r"C:\\Windows\\Fonts\\seguisb.ttf", r"C:\\Windows\\Fonts\\arialbd.ttf"]
+        [r"C:\Windows\Fonts\seguisb.ttf", r"C:\Windows\Fonts\arialbd.ttf"]
         if bold
-        else [r"C:\\Windows\\Fonts\\segoeui.ttf", r"C:\\Windows\\Fonts\\arial.ttf"]
+        else [r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\arial.ttf"]
     )
     candidates += (
         ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
