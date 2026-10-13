@@ -82,9 +82,9 @@ jobs:
           print('TEST_RESULT=' + status)
           with open('ci-test-status.txt', 'w', encoding='ascii') as out:
               out.write(status)
-          '@ | Set-Content -Encoding utf8 .\\run_ci_tests.py
-          python .\\run_ci_tests.py
-          if ((Get-Content .\\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
+          '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
+          python .\run_ci_tests.py
+          if ((Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests failed.'
           }
           $global:LASTEXITCODE = 0
@@ -92,7 +92,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          if (!(Test-Path .\\ci-test-status.txt) -or (Get-Content .\\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
+          if (!(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests did not pass.'
           }
       - name: Compile Python modules
@@ -139,12 +139,12 @@ jobs:
           $certificatePath = Join-Path $env:RUNNER_TEMP "mysqlidle-code-signing.pfx"
           try {
             [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
-            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\\Windows Kits\\10\\bin\\*\\x64\\signtool.exe" -ErrorAction SilentlyContinue |
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
               Sort-Object FullName -Descending | Select-Object -First 1
             if (-not $signtool) { throw "Windows SDK SignTool was not found on this runner." }
-            $files = @("dist\\MySQLIDLE_Portable.exe", "dist\\MySQLIDLE-Setup.exe")
-            if (Test-Path "dist\\mysql_idle") {
-              $files += Get-ChildItem "dist\\mysql_idle" -Filter "*.exe" -File -Recurse | ForEach-Object { $_.FullName }
+            $files = @("dist\MySQLIDLE_Portable.exe", "dist\MySQLIDLE-Setup.exe")
+            if (Test-Path "dist\mysql_idle") {
+              $files += Get-ChildItem "dist\mysql_idle" -Filter "*.exe" -File -Recurse | ForEach-Object { $_.FullName }
             }
             foreach ($file in $files) {
               if (!(Test-Path $file)) { throw "Expected executable to sign was not found: $file" }
@@ -159,8 +159,8 @@ jobs:
       - name: Archive signed desktop folder
         shell: pwsh
         run: |
-          if (Test-Path "dist\\mysql_idle") {
-            Compress-Archive -Path "dist\\mysql_idle\\*" -DestinationPath "dist\\MySQLIDLE-Folder.zip" -Force
+          if (Test-Path "dist\mysql_idle") {
+            Compress-Archive -Path "dist\mysql_idle\*" -DestinationPath "dist\MySQLIDLE-Folder.zip" -Force
           }
       - uses: actions/upload-artifact@v4
         with:
