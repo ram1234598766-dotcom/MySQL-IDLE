@@ -150,7 +150,7 @@ class _MobileSession:
 class MobileCompanionServer:
     """Start/stop the mobile companion. Public-LAN access is never automatic."""
 
-    def __init__(self, port=8765):
+    def __init__(self, port=8765, bind_host="0.0.0.0"):
         self.pairing_code = f"{secrets.randbelow(10**10):010d}"
         self.sessions = {}
         self.sessions_lock = threading.RLock()
@@ -164,6 +164,7 @@ class MobileCompanionServer:
         self._running = False
         self._serve_thread = None
         self.port_requested = int(port)
+        self.bind_host = str(bind_host)
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -491,10 +492,10 @@ class MobileCompanionServer:
                         self._json(400, {"ok": False, "error": _database_error(exc)})
 
         try:
-            self.httpd = ThreadingHTTPServer(("0.0.0.0", self.port_requested), Handler)
+            self.httpd = ThreadingHTTPServer((self.bind_host, self.port_requested), Handler)
         except OSError:
             # Avoid a dead end if another app already uses the default port.
-            self.httpd = ThreadingHTTPServer(("0.0.0.0", 0), Handler)
+            self.httpd = ThreadingHTTPServer((self.bind_host, 0), Handler)
         self.httpd.daemon_threads = True
         self.httpd.block_on_close = False
         bound_port = self.httpd.server_address[1]
