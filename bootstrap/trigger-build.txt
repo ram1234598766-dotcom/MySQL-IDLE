@@ -1,0 +1,1 @@
+MySQL IDLE 3.0: verified source payload; trigger Windows EXE/installer and Android APK builds via GitHub Actions.
