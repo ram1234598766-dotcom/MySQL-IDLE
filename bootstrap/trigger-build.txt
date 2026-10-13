@@ -1,1 +1,1 @@
-CI run 7: Windows desktop unit tests; Linux mobile HTTP integration tests; build EXE and APK.
+CI run 8: explicit regression-test runner and cross-platform EXE/APK build.
