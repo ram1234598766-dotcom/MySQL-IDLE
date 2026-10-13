@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="MySQL IDLE terminal logo">
+  <rect x="7" y="7" width="114" height="114" rx="27" fill="#0F172A"/>
+  <circle cx="32" cy="25" r="3" fill="#22D3EE"/>
+  <circle cx="44" cy="25" r="3" fill="#2563EB"/>
+  <circle cx="56" cy="25" r="3" fill="#475569"/>
+  <path d="M31 43 41 33 68 60 41 87 31 77 48 60Z" fill="#22D3EE"/>
+  <rect x="70" y="76" width="27" height="10" rx="3" fill="#2563EB"/>
+</svg>
