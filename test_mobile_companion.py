@@ -84,7 +84,7 @@ class FakeConnection:
 
 class MobileCompanionHTTPTests(unittest.TestCase):
     def setUp(self):
-        self.server = mobile_companion.MobileCompanionServer(port=0)
+        self.server = mobile_companion.MobileCompanionServer(port=0, bind_host="127.0.0.1")
         self.server.start()
         self.base = f"http://127.0.0.1:{self.server.port}"
 
