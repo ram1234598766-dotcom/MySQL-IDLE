@@ -13,7 +13,6 @@ on:
       - "build_windows.ps1"
       - "android-app/**"
       - "tools/restore_sources.py"
-      - ".github/workflows/build-exe-apk.yml"
   pull_request:
     paths:
       - "bootstrap/trigger-build.txt"
@@ -24,7 +23,6 @@ on:
       - "build_windows.ps1"
       - "android-app/**"
       - "tools/restore_sources.py"
-      - ".github/workflows/build-exe-apk.yml"
   workflow_dispatch:
 
 permissions:
