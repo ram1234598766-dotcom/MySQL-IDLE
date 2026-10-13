@@ -1,1 +1,1 @@
-CI run 9: fix Android Kotlin compilation and deterministic Windows test status.
+CI run 11: verified Windows tests, build desktop EXE and Android APK, publish assets to GitHub prerelease.
