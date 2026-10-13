@@ -67,7 +67,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
       - name: Run regression tests
-        run: python -m unittest -v test_mysql_idle.py test_mobile_companion.py
+        run: python -m unittest -v test_mysql_idle.py
       - name: Compile Python modules
         run: python -m py_compile mysql_idle.py mobile_companion.py test_mysql_idle.py test_mobile_companion.py
       - name: Build one-folder desktop app
@@ -118,6 +118,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Restore source payload when bootstrapping an empty repo
         run: python tools/restore_sources.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run mobile HTTP integration tests
+        run: python -m unittest -v test_mobile_companion.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
