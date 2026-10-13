@@ -30,8 +30,8 @@ The normal Windows user only needs the packaged `.exe` or installer; Python is r
 
 ## Android companion
 
-The Android app is a small WebView client for the companion hosted by the desktop application. Start the companion in **Tools → Android / Mobile Companion** on the desktop, then enter the displayed LAN address in the Android app. Both devices should be on a trusted private network. The companion currently uses HTTP on the LAN, which is not encrypted; do not expose its port to the public internet. The APK does not embed your MySQL password or run a MySQL server on Android.
+The Android app is a WebView client for the companion hosted by the desktop application. Start the companion in **Tools → Android / Mobile Companion** on the desktop, then enter the root LAN address in the Android app (for example, `http://192.168.1.20:8765`). The Android app rejects paths, query strings, fragments and embedded usernames so the saved URL matches the desktop service's root endpoint. Both devices must be on a trusted private network. The companion currently uses HTTP on the LAN, which is not encrypted; pairing codes, queries and database credentials cross that network in clear text. Do not use public Wi-Fi, router port forwarding or public exposure; for remote use, prefer a trusted VPN/private tunnel. The APK does not embed your MySQL password or run a MySQL server on Android.
 
 ## Security and verification
 
-Review `SECURITY.md`. Automated tests cover SQL parsing, result streaming and mobile endpoint logic; CI tests the source on Windows and builds both distributables. A successful GitHub Actions run is the authoritative check for the actual Windows and Android binaries.
+Review `SECURITY.md`. Automated tests cover SQL parsing, result streaming, request-size limits, host-header validation and mobile endpoint logic. CI runs both Python test modules on Windows, validates the mobile HTTP integration on Linux, and builds the Windows/Android packages. The release includes the Windows installer when the installer build succeeds. A successful GitHub Actions run is the authoritative check for the actual platform binaries.
