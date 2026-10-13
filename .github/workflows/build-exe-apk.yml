@@ -135,7 +135,7 @@ jobs:
           path: |
             dist/MySQLIDLE_Portable.exe
             dist/MySQLIDLE-Folder.zip
-            dist/installer/MySQLIDLE-Setup.exe
+            dist/MySQLIDLE-Setup.exe
           if-no-files-found: error
           retention-days: 30
 
