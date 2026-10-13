@@ -1,1 +1,1 @@
-CI run 12: build Windows EXE/installer and Android APK; validate test result file.
+CI run 13: clean release assets only (portable EXE, folder ZIP and APK).
