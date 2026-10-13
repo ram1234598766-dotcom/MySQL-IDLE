@@ -14,6 +14,8 @@ val releaseSigningConfigured = listOf(
     releaseKeyPassword
 ).all { !it.isNullOrBlank() }
 
+val ciBuildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.takeIf { it > 0 }
+
 android {
     namespace = "com.mysqlidle.mobile"
     compileSdk = 35
@@ -22,8 +24,8 @@ android {
         applicationId = "com.mysqlidle.mobile"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "3.0.0"
+        versionCode = ciBuildNumber ?: 1
+        versionName = ciBuildNumber?.let { "3.0.0+$it" } ?: "3.0.0"
     }
 
     signingConfigs {
