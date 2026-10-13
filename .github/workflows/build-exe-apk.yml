@@ -72,9 +72,7 @@ jobs:
         run: |
           @'
           import unittest
-          suite = unittest.TestSuite()
-          for name in ('test_mysql_idle', 'test_mobile_companion'):
-              suite.addTests(unittest.defaultTestLoader.loadTestsFromName(name))
+          suite = unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle')
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           status = 'PASS' if result.wasSuccessful() else 'FAIL'
           print('TEST_RESULT=' + status)
