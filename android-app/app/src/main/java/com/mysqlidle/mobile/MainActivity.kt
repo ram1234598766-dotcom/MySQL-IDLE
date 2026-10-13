@@ -18,6 +18,7 @@ import android.net.http.SslError
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -73,9 +74,27 @@ class MainActivity : Activity() {
         scroll.addView(page)
         setContentView(scroll)
 
-        page.addView(label("MySQL IDLE", 30f).apply { setTypeface(null, android.graphics.Typeface.BOLD) })
-        page.addView(label("Mobile companion", 17f, blue).apply {
-            setPadding(0, dp(4), 0, dp(20))
+        val brandHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        brandHeader.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_mysqlidle_brandmark)
+            contentDescription = "MySQL IDLE logo"
+        }, LinearLayout.LayoutParams(dp(64), dp(64)))
+        val brandText = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, 0, 0)
+        }
+        brandText.addView(label("MySQL IDLE", 27f).apply {
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+        brandText.addView(label("Mobile companion", 16f, blue).apply {
+            setPadding(0, dp(2), 0, 0)
+        })
+        brandHeader.addView(brandText)
+        page.addView(brandHeader, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(28)
         })
         page.addView(label("Connect to the desktop companion", 19f).apply {
             setTypeface(null, android.graphics.Typeface.BOLD)

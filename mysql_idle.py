@@ -42,6 +42,7 @@ import os
 import queue
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -60,6 +61,23 @@ except Exception as _pymysql_exc:  # Show a friendly first-run error for source 
 
 APP_NAME = "MySQL IDLE"
 APP_VERSION = "3.0"
+
+
+def _resource_path(relative_path):
+    """Resolve assets from source or the bundled PyInstaller application."""
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return bundle_root / relative_path
+
+
+def _apply_window_icon(window):
+    """Use the shared product icon in the title bar when its asset is available."""
+    icon_path = _resource_path(Path("assets") / "mysqlidle.ico")
+    if icon_path.is_file():
+        try:
+            window.iconbitmap(default=str(icon_path))
+        except (tk.TclError, OSError):
+            # Keep startup resilient when running from source without generated assets.
+            pass
 
 
 def get_app_data_dir():
@@ -856,6 +874,7 @@ class MySQLIDLE:
         self.draft = ""
 
         root.title(APP_NAME)
+        _apply_window_icon(root)
         root.geometry("1000x660")
         root.minsize(620, 380)
         root.configure(bg="white")

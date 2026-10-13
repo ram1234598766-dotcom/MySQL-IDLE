@@ -9,7 +9,10 @@ if (-not $Python) {
 
 py -3 --version
 py -3 -m pip install --upgrade pip
-py -3 -m pip install -r requirements.txt pyinstaller
+py -3 -m pip install -r requirements.txt pyinstaller pillow
+py -3 tools/generate_brand_assets.py
+if ($LASTEXITCODE -ne 0) { throw 'Brand asset generation failed.' }
+
 py -3 -m unittest -v test_mysql_idle.py test_mobile_companion.py
 if ($LASTEXITCODE -ne 0) { throw 'Automated tests failed; packaging was stopped.' }
 
