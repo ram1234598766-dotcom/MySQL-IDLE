@@ -176,6 +176,28 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             urlopen(req, timeout=5)
         self.assertEqual(err.exception.code, 403)
 
+    def test_host_header_rejects_mismatched_port(self):
+        req = Request(self.base + "/", headers={"Host": "localhost:1"})
+        with self.assertRaises(HTTPError) as err:
+            urlopen(req, timeout=5)
+        self.assertEqual(err.exception.code, 403)
+
+    def test_oversized_request_body_returns_413(self):
+        req = Request(
+            self.base + "/api/pair",
+            data=b"{}",
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(mobile_companion.MAX_BODY_BYTES + 1),
+            },
+            method="POST",
+        )
+        with self.assertRaises(HTTPError) as err:
+            urlopen(req, timeout=5)
+        self.assertEqual(err.exception.code, 413)
+        body = json.loads(err.exception.read().decode("utf-8"))
+        self.assertIn("limit", body["error"].lower())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

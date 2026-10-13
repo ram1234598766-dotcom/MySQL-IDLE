@@ -127,12 +127,18 @@ class MainActivity : Activity() {
 
     private fun connect(raw: String) {
         val text = raw.trim().trimEnd('/')
-        val uri = runCatching { Uri.parse(text) }.getOrNull()
-        if (uri == null || uri.scheme !in listOf("http", "https") ||
-            uri.host.isNullOrBlank() || uri.userInfo != null) {
-            showConnectScreen("Enter a valid http:// or https:// desktop companion URL.")
+        val parsed = runCatching { java.net.URI(text) }.getOrNull()
+        if (parsed == null || parsed.scheme?.lowercase() !in listOf("http", "https") ||
+            parsed.host.isNullOrBlank() || parsed.rawUserInfo != null ||
+            parsed.rawPath !in listOf("", "/") || parsed.rawQuery != null ||
+            parsed.rawFragment != null || (parsed.port != -1 && parsed.port !in 1..65535)) {
+            showConnectScreen(
+                "Enter the desktop root URL, such as http://192.168.1.10:8765, " +
+                    "without a path, query, fragment or username."
+            )
             return
         }
+        val uri = Uri.parse(parsed.toASCIIString())
         baseUri = uri
         prefs.edit().putString("server_url", text).apply()
         showWebView(uri)

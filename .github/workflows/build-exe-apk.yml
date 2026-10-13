@@ -129,6 +129,7 @@ jobs:
           path: |
             dist/MySQLIDLE_Portable.exe
             dist/MySQLIDLE-Folder.zip
+            dist/installer/MySQLIDLE-Setup.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -189,4 +190,5 @@ jobs:
           files: |
             release-assets/MySQLIDLE_Portable.exe
             release-assets/MySQLIDLE-Folder.zip
+            release-assets/MySQLIDLE-Setup.exe
             release-assets/MySQLIDLE-Mobile-debug.apk
