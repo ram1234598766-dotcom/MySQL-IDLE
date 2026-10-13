@@ -82,6 +82,7 @@ jobs:
           if ((Get-Content .\\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests failed.'
           }
+          $global:LASTEXITCODE = 0
       - name: Compile Python modules
         run: python -m py_compile mysql_idle.py mobile_companion.py test_mysql_idle.py test_mobile_companion.py
       - name: Build one-folder desktop app
@@ -163,7 +164,7 @@ jobs:
 
   publish-release:
     name: Publish versioned release assets
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
     steps:
@@ -174,5 +175,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
+          target_commitish: main
+          name: MySQL IDLE 3.0 Build ${{ github.run_number }}
+          prerelease: true
           generate_release_notes: true
           files: release-assets/**/*
