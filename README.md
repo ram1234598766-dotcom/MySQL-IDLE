@@ -34,4 +34,4 @@ The Android app is a WebView client for the companion hosted by the desktop appl
 
 ## Security and verification
 
-Review `SECURITY.md`. Automated tests cover SQL parsing, result streaming, request-size limits, host-header validation and mobile endpoint logic. CI runs both Python test modules on Windows, validates the mobile HTTP integration on Linux, and builds the Windows/Android packages. The release includes the Windows installer when the installer build succeeds. A successful GitHub Actions run is the authoritative check for the actual platform binaries.
+Review `SECURITY.md`. Automated tests cover SQL parsing, result streaming, request-size limits, host-header validation and mobile endpoint logic. CI runs the desktop helper tests on Windows, the mobile HTTP integration suite on Linux, and builds the Windows/Android packages. The release includes the Windows installer when the installer build succeeds. A successful GitHub Actions run is the authoritative check for the actual platform binaries.
