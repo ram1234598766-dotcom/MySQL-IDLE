@@ -33,7 +33,7 @@ class PackagingBrandingTests(unittest.TestCase):
             "WizardImageFile=",
             "WizardSmallImageFile=",
             "UninstallDisplayIcon=",
-            r'Source: "{#MyDistDir}\\*"; DestDir: "{app}"',
+            r'Source: "{#MyDistDir}\*"; DestDir: "{app}"',
             "recursesubdirs createallsubdirs",
             "CurUninstallStepChanged",
             "local settings, SQL history",
