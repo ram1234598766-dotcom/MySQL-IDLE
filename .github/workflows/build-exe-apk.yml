@@ -218,7 +218,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Run mobile HTTP integration tests
+      - name: Install Python runtime dependencies for the mobile companion
+        run: python -m pip install -r requirements.txt
+      - name: Run mobile HTTPS integration tests
         run: python -m unittest -v test_mobile_companion.py
       - uses: actions/setup-java@v6
         with:
