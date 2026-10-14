@@ -34,6 +34,28 @@ class SQLClassificationTests(unittest.TestCase):
         self.assertFalse(classify_sql("DELETE FROM users WHERE id=7")["requires_confirmation"])
         self.assertFalse(classify_sql("UPDATE users SET active=0 WHERE id=7")["requires_confirmation"])
 
+    def test_nested_subquery_where_does_not_hide_unqualified_update(self):
+        result = classify_sql(
+            "UPDATE users SET active=(SELECT 0 FROM flags WHERE flags.id=users.id)"
+        )
+        self.assertTrue(result["requires_confirmation"])
+
+    def test_nested_subquery_where_does_not_hide_unqualified_delete(self):
+        result = classify_sql(
+            "DELETE FROM users WHERE id IN (SELECT user_id FROM blocked WHERE active=1)"
+        )
+        # Outer WHERE exists, so this is not an unqualified/full-table delete.
+        self.assertFalse(result["requires_confirmation"])
+        result = classify_sql(
+            "DELETE FROM users /* marker */"
+        )
+        self.assertTrue(result["requires_confirmation"])
+
+    def test_second_statement_is_classified_independently(self):
+        result = classify_sql("SELECT 1; DELETE FROM users")
+        self.assertTrue(result["requires_confirmation"])
+
+
 
 class GovernancePolicyTests(unittest.TestCase):
     def test_high_impact_approval_is_one_time(self):
