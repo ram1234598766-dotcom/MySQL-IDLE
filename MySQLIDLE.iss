@@ -92,7 +92,7 @@ begin
       if DirExists(DataDir) and not DelTree(DataDir, True, True, True) then
         Log('Some MySQL IDLE settings or log files could not be removed from: ' + DataDir);
 
-      LegacyConfig := ExpandConstant('{localappdata}\..\..\.mysql_idle.json');
+      LegacyConfig := ExpandConstant('{userprofile}\.mysql_idle.json');
       if FileExists(LegacyConfig) and not DeleteFile(LegacyConfig) then
         Log('Could not remove legacy MySQL IDLE settings: ' + LegacyConfig);
     end;
