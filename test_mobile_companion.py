@@ -111,6 +111,12 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertIn("Android companion", body)
             self.assertIn("viewport", body)
+            self.assertIn('aria-label="MySQL IDLE logo"', body)
+            self.assertIn('id="historyBackBtn"', body)
+            self.assertIn('id="historyForwardBtn"', body)
+            self.assertIn('id="templateSelect"', body)
+            self.assertIn("queryHistory.push(sql)", body)
+            self.assertIn("50 queries in memory", body)
             self.assertIn("Run SQL", body)
 
     def test_pairing_code_authenticates_ephemeral_session(self):
