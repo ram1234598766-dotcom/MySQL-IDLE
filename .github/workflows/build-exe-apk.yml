@@ -193,6 +193,40 @@ jobs:
             throw "Inno Setup installer output is missing; refusing to publish an incomplete release."
           }
           Copy-Item "dist\installer\MySQLIDLE-Setup.exe" "dist\MySQLIDLE-Setup.exe" -Force
+      - name: Smoke-test installer, installed launch, and uninstall cleanup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "mysqlidle-installer-smoke-appdata"
+          $installDir = Join-Path $env:RUNNER_TEMP "MySQLIDLE-Install-Smoke"
+          $setup = (Resolve-Path "dist\MySQLIDLE-Setup.exe").Path
+          $installArgs = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDir")
+          $install = Start-Process -FilePath $setup -ArgumentList $installArgs -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)." }
+
+          $installedExe = Join-Path $installDir "mysql_idle.exe"
+          if (!(Test-Path $installedExe)) { throw "Installer did not place the desktop executable." }
+          $app = Start-Process -FilePath $installedExe -WorkingDirectory $installDir -PassThru
+          try {
+            for ($second = 0; $second -lt 10; $second++) {
+              Start-Sleep -Seconds 1
+              $app.Refresh()
+              if ($app.HasExited) { throw "Installed application exited during startup (code $($app.ExitCode))." }
+            }
+          } finally {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          }
+
+          $uninstaller = Get-ChildItem -Path $installDir -Filter "unins*.exe" -File | Select-Object -First 1
+          if (!$uninstaller) { throw "Installer did not register an uninstaller." }
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Silent uninstall failed with exit code $($uninstall.ExitCode)." }
+          for ($second = 0; $second -lt 10 -and (Test-Path $installDir); $second++) { Start-Sleep -Seconds 1 }
+          if (Test-Path $installDir) { throw "Uninstaller left application files in $installDir." }
+
+          $startMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\MySQL IDLE.lnk"
+          if (Test-Path $startMenuShortcut) { throw "Uninstaller left the Start Menu shortcut behind." }
+          Write-Host "Installer launch and uninstall cleanup smoke tests passed."
       - name: Sign Windows installer
         if: env.WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
