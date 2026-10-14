@@ -101,6 +101,7 @@ LEGACY_CONFIG_PATH = Path.home() / ".mysql_idle.json"
 # SQL text can contain literals or tokens. Disk persistence is opt-in.
 SAVE_HISTORY = os.environ.get("MYSQLIDLE_SAVE_HISTORY", "").strip().lower() in {"1", "true", "yes"}
 MAX_HISTORY = 200
+TLS_PREFERENCE_SCHEMA_VERSION = 2
 MAX_SHELL_LINES = 20000
 FETCH_BATCH_SIZE = 512
 MAX_COMPLETION_IDENTIFIERS = 20000
@@ -287,8 +288,17 @@ def load_config():
                 continue
             # Defensive migration: connection passwords must never be persisted.
             last = data.get("last_connection")
+            tls_preference_migrated = False
             if isinstance(last, dict):
                 last.pop("password", None)
+                # Previous versions persisted their verified-TLS default without
+                # recording whether the checkbox was explicitly enabled. Normalize
+                # those legacy profiles once to avoid breaking common self-signed
+                # localhost MySQL installations after an upgrade.
+                if last.get("tls_verify_setting_version") != TLS_PREFERENCE_SCHEMA_VERSION:
+                    last["tls_verify"] = False
+                    last["tls_verify_setting_version"] = TLS_PREFERENCE_SCHEMA_VERSION
+                    tls_preference_migrated = True
             else:
                 data.pop("last_connection", None)
             had_persisted_history = "history" in data
@@ -305,8 +315,8 @@ def load_config():
                         candidate.unlink()
                     except OSError:
                         logging.warning("Migrated settings, but could not remove legacy settings file %s", candidate)
-            elif had_persisted_history and not SAVE_HISTORY:
-                # Scrub previously persisted SQL text on first launch after this privacy default.
+            elif (had_persisted_history and not SAVE_HISTORY) or tls_preference_migrated:
+                # Scrub old SQL history and migrate pre-versioned TLS preferences.
                 save_config(data)
             return data
         except (OSError, ValueError, TypeError):
@@ -1542,6 +1552,7 @@ class MySQLIDLE:
                             "database": info.get("database", "") or "",
                             "ssl_ca": info.get("ssl_ca", "") or "",
                             "tls_verify": bool(info.get("tls_verify", False)),
+                            "tls_verify_setting_version": TLS_PREFERENCE_SCHEMA_VERSION,
                         }
                         signature = tuple(saved.items())
                         if signature != self._persisted_connection:
