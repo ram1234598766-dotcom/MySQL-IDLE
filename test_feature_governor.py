@@ -102,6 +102,7 @@ class GovernancePolicyTests(unittest.TestCase):
         self.assertEqual(governor.check_sql("SELECT 1")["decision"], "allow")
         result = governor.check_sql("UPDATE users SET active=0 WHERE id=1")
         self.assertEqual(result["decision"], "block")
+        self.assertEqual(governor.check_sql("COMMIT")["decision"], "block")
 
     def test_environment_read_only_cannot_be_disabled_in_ui(self):
         with patch.dict(os.environ, {"MYSQLIDLE_READ_ONLY": "1"}):
