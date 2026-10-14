@@ -740,16 +740,28 @@ class DatabaseWorker(threading.Thread):
             self.output(f"Could not refresh autocomplete metadata: {fmt_error(exc)}\n", "info")
         self._emit_connection_state()
 
-    def _run_query_batch(self, statements, stop_on_error=False, echo=False, script_name=None):
+    def _run_query_batch(self, statements, stop_on_error=False, echo=False, script_name=None,
+                         approved_statements=None):
         if script_name:
             self.output(f"-- running {script_name}: {len(statements)} statement(s)\n", "info")
         if self.conn is None:
             self.output("Not connected. Use File > Connect... (Ctrl+N).\n", "error")
             return
 
+        # Bind approvals to this queued job (not shared global state), including
+        # duplicate identical statements which each require their own confirmation.
+        approved_counts = {}
+        for approved_stmt in approved_statements or ():
+            digest = self.governor._digest(approved_stmt)
+            approved_counts[digest] = approved_counts.get(digest, 0) + 1
+
         completed = 0
         for index, stmt in enumerate(statements, start=1):
-            policy = self.governor.check_sql(stmt)
+            digest = self.governor._digest(stmt)
+            externally_approved = approved_counts.get(digest, 0) > 0
+            if externally_approved:
+                approved_counts[digest] -= 1
+            policy = self.governor.check_sql(stmt, externally_approved=externally_approved)
             if policy["decision"] != "allow":
                 self.output(
                     f"Feature Governance stopped statement {index}: {policy['reason']} "
@@ -849,9 +861,10 @@ class DatabaseWorker(threading.Thread):
             self._refresh_state()
         return True
 
-    def _run_script(self, statements, name):
+    def _run_script(self, statements, name, approved_statements=None):
         self._run_query_batch(
-            statements, stop_on_error=True, echo=True, script_name=name
+            statements, stop_on_error=True, echo=True, script_name=name,
+            approved_statements=approved_statements,
         )
 
     def _set_autocommit(self, enabled):
@@ -1406,15 +1419,19 @@ class MySQLIDLE:
         statements, rest = split_sql(self.pending)
         self.pending = rest if rest.strip() else ""
         complete = [stmt for stmt in statements if not is_blank_sql(stmt)]
-        if complete and self._preflight_statements(complete, source="interactive query"):
-            self._queue_job("query", {
-                "statements": complete, "stop_on_error": False,
-                "echo": False, "script_name": None,
-            })
+        if complete:
+            approved_statements = self._preflight_statements(complete, source="interactive query")
+            if approved_statements is not None:
+                self._queue_job("query", {
+                    "statements": complete, "stop_on_error": False,
+                    "echo": False, "script_name": None,
+                    "approved_statements": approved_statements,
+                })
         self.new_prompt(continuation=bool(self.pending))
 
     def _preflight_statements(self, statements, source="query"):
-        """Ask in the UI thread before queueing high-impact SQL; worker rechecks policy."""
+        """Return approvals scoped to one queued job, or None if it should not run."""
+        approvals = []
         for stmt in statements:
             policy = self.governor.inspect_sql(stmt)
             digest = self.governor.fingerprint(stmt)
@@ -1428,7 +1445,7 @@ class MySQLIDLE:
                     parent=self.root,
                 )
                 self.write(f"Feature Governance blocked a statement ({digest}).\n", "error")
-                return False
+                return None
             if policy["decision"] == "confirm":
                 approved = messagebox.askyesno(
                     "Confirm high-impact SQL",
@@ -1444,9 +1461,9 @@ class MySQLIDLE:
                     self.governor.record_decision(stmt, "cancelled", "User declined high-impact SQL.",
                                                   str(policy["category"]), str(policy["risk"]))
                     self.write("High-impact SQL cancelled by Feature Governance.\n", "info")
-                    return False
-                self.governor.approve_once(stmt)
-        return True
+                    return None
+                approvals.append(stmt)
+        return approvals
 
     def show_result(self, columns, rows, row_count, elapsed):
         if row_count == 0:
@@ -1839,9 +1856,13 @@ class MySQLIDLE:
             statements.append(rest.strip())
         statements = [stmt for stmt in statements if not is_blank_sql(stmt)]
         self.pending = ""
-        if not self._preflight_statements(statements, source=os.path.basename(path)):
+        approved_statements = self._preflight_statements(statements, source=os.path.basename(path))
+        if approved_statements is None:
             return
-        self._queue_job("script", {"statements": statements, "name": os.path.basename(path)})
+        self._queue_job("script", {
+            "statements": statements, "name": os.path.basename(path),
+            "approved_statements": approved_statements,
+        })
 
     def save_log(self):
         path = filedialog.asksaveasfilename(
