@@ -127,7 +127,7 @@ class SplitSQLTests(unittest.TestCase):
             self.assertEqual(cfg["last_connection"]["user"], "tester")
             self.assertNotIn("password", cfg["last_connection"])
             self.assertFalse(cfg["last_connection"]["tls_verify"])
-            self.assertEqual(cfg["last_connection"]["tls_verify_setting_version"], 2)
+            self.assertEqual(cfg["last_connection"]["tls_verify_setting_version"], 3)
             self.assertNotIn("history", cfg)
             migrated = target.read_text(encoding="utf-8")
             self.assertNotIn("legacy-secret", migrated)
@@ -139,18 +139,39 @@ class SplitSQLTests(unittest.TestCase):
             target = Path(tmp) / "settings.json"
             legacy = Path(tmp) / "missing-legacy-settings.json"
             target.write_text(json.dumps({
-                "last_connection": {"host": "localhost", "user": "tester", "tls_verify": True}
+                "last_connection": {
+                    "host": "localhost", "user": "tester", "tls_verify": True,
+                    "tls_verify_setting_version": 2,
+                }
             }), encoding="utf-8")
             with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy), patch.object(mysql_idle, "SAVE_HISTORY", False):
                 migrated = mysql_idle.load_config()
                 self.assertFalse(migrated["last_connection"]["tls_verify"])
-                self.assertEqual(migrated["last_connection"]["tls_verify_setting_version"], 2)
+                self.assertEqual(migrated["last_connection"]["tls_verify_setting_version"], 3)
 
                 # A new explicit preference is preserved after the one-time migration.
                 migrated["last_connection"]["tls_verify"] = True
                 mysql_idle.save_config(migrated)
                 saved_again = mysql_idle.load_config()
             self.assertTrue(saved_again["last_connection"]["tls_verify"])
+
+    def test_v2_saved_verified_tls_choice_is_reset_after_upgrade(self):
+        with tempfile.TemporaryDirectory(prefix="mysql_idle_tls_v2_upgrade_") as tmp:
+            target = Path(tmp) / "settings.json"
+            target.write_text(json.dumps({
+                "last_connection": {
+                    "host": "localhost", "port": 3306, "user": "root",
+                    "tls_verify": True, "tls_verify_setting_version": 2,
+                }
+            }), encoding="utf-8")
+            legacy = Path(tmp) / "missing-legacy-settings.json"
+            with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy), patch.object(mysql_idle, "SAVE_HISTORY", False):
+                migrated = mysql_idle.load_config()
+                self.assertFalse(migrated["last_connection"]["tls_verify"])
+                self.assertEqual(migrated["last_connection"]["tls_verify_setting_version"], 3)
+                saved = json.loads(target.read_text(encoding="utf-8"))
+                self.assertFalse(saved["last_connection"]["tls_verify"])
+                self.assertEqual(saved["last_connection"]["tls_verify_setting_version"], 3)
 
     def test_history_can_only_be_persisted_when_explicitly_enabled(self):
         with tempfile.TemporaryDirectory(prefix="mysql_idle_history_optin_") as tmp:
