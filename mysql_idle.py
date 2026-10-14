@@ -753,7 +753,7 @@ class DatabaseWorker(threading.Thread):
             if policy["decision"] != "allow":
                 self.output(
                     f"Feature Governance stopped statement {index}: {policy['reason']} "
-                    f"(risk: {policy['risk']}; fingerprint: {self.governor._digest(stmt)}).\n",
+                    f"(risk: {policy['risk']}; fingerprint: {self.governor.fingerprint(stmt)}).\n",
                     "error",
                 )
                 # Fail closed: a batch never continues after a policy stop.
@@ -1417,7 +1417,7 @@ class MySQLIDLE:
         """Ask in the UI thread before queueing high-impact SQL; worker rechecks policy."""
         for stmt in statements:
             policy = self.governor.inspect_sql(stmt)
-            digest = self.governor._digest(stmt)
+            digest = self.governor.fingerprint(stmt)
             if policy["decision"] == "block":
                 self.governor.record_decision(stmt, "block", str(policy["reason"]),
                                               str(policy["category"]), str(policy["risk"]))
