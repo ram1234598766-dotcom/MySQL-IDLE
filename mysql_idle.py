@@ -932,7 +932,8 @@ class MySQLIDLE:
         self.mobile_server = None
         self._mobile_stopping = False
 
-        self.history = list(self.cfg.get("history", []))[-MAX_HISTORY:] if SAVE_HISTORY else []
+        # Previous sessions load history only when the explicit disk-persistence opt-in was enabled.
+        self.history = list(self.cfg.get("history", []))[-MAX_HISTORY:]
         self.hist_idx = len(self.history)
         self.draft = ""
 
