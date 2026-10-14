@@ -10,6 +10,9 @@ if (-not $Python) {
 py -3 --version
 py -3 -m pip install --upgrade pip
 py -3 -m pip install -r requirements.txt pyinstaller pillow
+py -3 -m pip check
+if ($LASTEXITCODE -ne 0) { throw 'Python dependency consistency check failed.' }
+
 py -3 tools/generate_brand_assets.py
 if ($LASTEXITCODE -ne 0) { throw 'Brand asset generation failed.' }
 
@@ -19,11 +22,22 @@ if ($LASTEXITCODE -ne 0) { throw 'Automated tests failed; packaging was stopped.
 if (Test-Path .\build) { Remove-Item .\build -Recurse -Force }
 if (Test-Path .\dist\mysql_idle) { Remove-Item .\dist\mysql_idle -Recurse -Force }
 if (Test-Path .\dist\MySQLIDLE_Portable.exe) { Remove-Item .\dist\MySQLIDLE_Portable.exe -Force }
+# Do not accidentally ship an installer left behind by an older local build.
+if (Test-Path .\dist\installer\MySQLIDLE-Setup.exe) {
+    Remove-Item .\dist\installer\MySQLIDLE-Setup.exe -Force
+}
 
 py -3 -m PyInstaller --clean --noconfirm mysql_idle.spec
 if ($LASTEXITCODE -ne 0) { throw 'Folder build failed.' }
 py -3 -m PyInstaller --clean --noconfirm mysql_idle_portable.spec
 if ($LASTEXITCODE -ne 0) { throw 'Portable one-file build failed.' }
+
+if (-not (Test-Path .\dist\mysql_idle\mysql_idle.exe)) {
+    throw 'Expected one-folder executable was not produced.'
+}
+if (-not (Test-Path .\dist\MySQLIDLE_Portable.exe)) {
+    throw 'Expected portable executable was not produced.'
+}
 
 $Iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
 if ($Iscc) {
