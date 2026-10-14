@@ -101,6 +101,8 @@ LEGACY_CONFIG_PATH = Path.home() / ".mysql_idle.json"
 # SQL text can contain literals or tokens. Disk persistence is opt-in.
 SAVE_HISTORY = os.environ.get("MYSQLIDLE_SAVE_HISTORY", "").strip().lower() in {"1", "true", "yes"}
 MAX_HISTORY = 200
+TLS_PREFERENCE_SCHEMA_VERSION = 3
+DEFAULT_MYSQL_TLS_VERIFY = False
 MAX_SHELL_LINES = 20000
 FETCH_BATCH_SIZE = 512
 MAX_COMPLETION_IDENTIFIERS = 20000
@@ -287,8 +289,18 @@ def load_config():
                 continue
             # Defensive migration: connection passwords must never be persisted.
             last = data.get("last_connection")
+            tls_preference_migrated = False
             if isinstance(last, dict):
                 last.pop("password", None)
+                # Normalize saved connection profiles when the TLS preference
+                # contract changes. Version 3 makes certificate verification opt-in
+                # again so upgrades do not retain a stale "verify" choice that blocks
+                # local servers using a self-signed certificate. Users can still opt
+                # into verification from Connect to MySQL and supply a trusted CA.
+                if last.get("tls_verify_setting_version") != TLS_PREFERENCE_SCHEMA_VERSION:
+                    last["tls_verify"] = DEFAULT_MYSQL_TLS_VERIFY
+                    last["tls_verify_setting_version"] = TLS_PREFERENCE_SCHEMA_VERSION
+                    tls_preference_migrated = True
             else:
                 data.pop("last_connection", None)
             had_persisted_history = "history" in data
@@ -305,8 +317,8 @@ def load_config():
                         candidate.unlink()
                     except OSError:
                         logging.warning("Migrated settings, but could not remove legacy settings file %s", candidate)
-            elif had_persisted_history and not SAVE_HISTORY:
-                # Scrub previously persisted SQL text on first launch after this privacy default.
+            elif (had_persisted_history and not SAVE_HISTORY) or tls_preference_migrated:
+                # Scrub old SQL history and migrate pre-versioned TLS preferences.
                 save_config(data)
             return data
         except (OSError, ValueError, TypeError):
@@ -469,15 +481,15 @@ class ConnectDialog(tk.Toplevel):
                     command=lambda v=var: self._browse_ca(v),
                 ).grid(row=row, column=2, sticky="w", padx=(8, 0), pady=4)
 
-        self.tls_verify = tk.BooleanVar(value=bool(defaults.get("tls_verify", True)))
+        self.tls_verify = tk.BooleanVar(value=bool(defaults.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY)))
         ttk.Checkbutton(
             self,
-            text="Require verified TLS to MySQL (recommended)",
+            text="Verify MySQL server certificate (optional)",
             variable=self.tls_verify,
         ).grid(row=len(self.FIELDS), column=0, columnspan=3, sticky="w", pady=(8, 2))
         tk.Label(
             self,
-            text="Turning this off allows unverified MySQL TLS and can expose database traffic to interception.",
+            text="Off by default for compatibility with local or self-signed certificates. Encryption is attempted when the server supports it, but its identity is not verified. Enable verification and provide a trusted CA to validate the server.",
             bg="white",
             fg="#9A3412",
             anchor="w",
@@ -607,8 +619,10 @@ class DatabaseWorker(threading.Thread):
         database = params.get("database") or None
         autocommit = bool(params.get("autocommit", True))
         ssl_ca = str(params.get("ssl_ca") or "").strip()
-        tls_verify = bool(params.get("tls_verify", True))
-        if ssl_ca and not os.path.isfile(ssl_ca):
+        tls_verify = bool(params.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY))
+        # A CA file is relevant only when certificate verification is explicitly
+        # enabled. Ignore stale/optional CA paths in the default compatibility mode.
+        if tls_verify and ssl_ca and not os.path.isfile(ssl_ca):
             self.output("MySQL CA certificate file was not found.\n", "error")
             return
         connection_options = {
@@ -618,8 +632,8 @@ class DatabaseWorker(threading.Thread):
         }
         if tls_verify:
             connection_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
-        if ssl_ca:
-            connection_options["ssl_ca"] = ssl_ca
+            if ssl_ca:
+                connection_options["ssl_ca"] = ssl_ca
         self.output(f"Connecting to {user}@{host}:{port} ...\n", "info")
         try:
             new_conn = pymysql.connect(**connection_options)
@@ -933,10 +947,10 @@ class DatabaseWorker(threading.Thread):
                     "charset": "utf8mb4", "autocommit": True,
                     "connect_timeout": 5, "read_timeout": 5, "write_timeout": 5,
                 }
-                if credentials.get("tls_verify", True):
+                if credentials.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY):
                     control_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
-                if credentials.get("ssl_ca"):
-                    control_options["ssl_ca"] = credentials["ssl_ca"]
+                    if credentials.get("ssl_ca"):
+                        control_options["ssl_ca"] = credentials["ssl_ca"]
                 control = pymysql.connect(**control_options)
                 with control.cursor() as cur:
                     cur.execute(f"KILL QUERY {int(thread_id)}")
@@ -1541,7 +1555,8 @@ class MySQLIDLE:
                             "user": info.get("user", ""),
                             "database": info.get("database", "") or "",
                             "ssl_ca": info.get("ssl_ca", "") or "",
-                            "tls_verify": bool(info.get("tls_verify", True)),
+                            "tls_verify": bool(info.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY)),
+                            "tls_verify_setting_version": TLS_PREFERENCE_SCHEMA_VERSION,
                         }
                         signature = tuple(saved.items())
                         if signature != self._persisted_connection:
@@ -1566,7 +1581,7 @@ class MySQLIDLE:
     def connect_dialog(self):
         defaults = {
             "host": "localhost", "port": "3306", "user": "root", "password": "",
-            "database": "", "ssl_ca": "", "tls_verify": True,
+            "database": "", "ssl_ca": "", "tls_verify": DEFAULT_MYSQL_TLS_VERIFY,
         }
         defaults.update(self.cfg.get("last_connection", {}))
         dialog = ConnectDialog(self.root, defaults)
@@ -1574,7 +1589,7 @@ class MySQLIDLE:
             self.connect(**dialog.result)
         self.text.focus_set()
 
-    def connect(self, host, port, user, password, database, ssl_ca="", tls_verify=True):
+    def connect(self, host, port, user, password, database, ssl_ca="", tls_verify=DEFAULT_MYSQL_TLS_VERIFY):
         self._queue_job("connect", {
             "host": host, "port": port, "user": user, "password": password,
             "database": database, "ssl_ca": ssl_ca, "tls_verify": bool(tls_verify),

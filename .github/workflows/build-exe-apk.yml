@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mysqlidle-${{ github.workflow }}-${{ github.ref }}
+  group: mysqlidle-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -63,6 +63,7 @@ jobs:
   build-windows:
     name: Build Windows EXE and installer
     runs-on: windows-latest
+    timeout-minutes: 20
     env:
       WINDOWS_SIGNING_ENABLED: ${{ github.event_name != 'pull_request' && secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
     steps:
@@ -87,6 +88,7 @@ jobs:
           suite = unittest.TestSuite()
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle'))
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_feature_governor'))
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_packaging_branding'))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           status = 'PASS' if result.wasSuccessful() else 'FAIL'
           print('TEST_RESULT=' + status)
@@ -106,11 +108,37 @@ jobs:
             throw 'Desktop regression tests did not pass.'
           }
       - name: Compile Python modules
-        run: python -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py
+        run: python -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py
       - name: Build one-folder desktop app
         run: python -m PyInstaller --clean --noconfirm mysql_idle.spec
       - name: Build portable single-file EXE
         run: python -m PyInstaller --clean --noconfirm mysql_idle_portable.spec
+      - name: Smoke-test packaged Windows executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "mysqlidle-smoke-appdata"
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          $executables = @(
+            (Resolve-Path "dist\mysql_idle\mysql_idle.exe").Path,
+            (Resolve-Path "dist\MySQLIDLE_Portable.exe").Path
+          )
+          foreach ($exe in $executables) {
+            Write-Host "Launching packaged app: $exe"
+            $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+            try {
+              for ($second = 0; $second -lt 15; $second++) {
+                Start-Sleep -Seconds 1
+                $process.Refresh()
+                if ($process.HasExited) {
+                  throw "Application exited during startup (code $($process.ExitCode)): $exe"
+                }
+              }
+              Write-Host "Startup smoke test passed: $exe"
+            } finally {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
       - name: Sign Windows application executables
         if: env.WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
@@ -166,6 +194,44 @@ jobs:
             throw "Inno Setup installer output is missing; refusing to publish an incomplete release."
           }
           Copy-Item "dist\installer\MySQLIDLE-Setup.exe" "dist\MySQLIDLE-Setup.exe" -Force
+      - name: Smoke-test installer, installed launch, and uninstall cleanup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "mysqlidle-installer-smoke-appdata"
+          $installDir = Join-Path $env:RUNNER_TEMP "MySQLIDLE-Install-Smoke"
+          $setup = (Resolve-Path "dist\MySQLIDLE-Setup.exe").Path
+          $installArgs = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDir")
+          $install = Start-Process -FilePath $setup -ArgumentList $installArgs -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed with exit code $($install.ExitCode)." }
+
+          $installedExe = Join-Path $installDir "mysql_idle.exe"
+          if (!(Test-Path $installedExe)) { throw "Installer did not place the desktop executable." }
+          $app = Start-Process -FilePath $installedExe -WorkingDirectory $installDir -PassThru
+          try {
+            for ($second = 0; $second -lt 10; $second++) {
+              Start-Sleep -Seconds 1
+              $app.Refresh()
+              if ($app.HasExited) { throw "Installed application exited during startup (code $($app.ExitCode))." }
+            }
+          } finally {
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          }
+
+          $uninstaller = Get-ChildItem -Path $installDir -Filter "unins*.exe" -File | Select-Object -First 1
+          if (!$uninstaller) { throw "Installer did not register an uninstaller." }
+          $uninstallLog = Join-Path $env:RUNNER_TEMP "mysqlidle-uninstall.log"
+          $uninstall = Start-Process -FilePath $uninstaller.FullName -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/LOG=$uninstallLog") -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) {
+            if (Test-Path $uninstallLog) { Get-Content $uninstallLog -Tail 160 }
+            throw "Silent uninstall failed with exit code $($uninstall.ExitCode)."
+          }
+          for ($second = 0; $second -lt 10 -and (Test-Path $installDir); $second++) { Start-Sleep -Seconds 1 }
+          if (Test-Path $installDir) { throw "Uninstaller left application files in $installDir." }
+
+          $startMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\MySQL IDLE.lnk"
+          if (Test-Path $startMenuShortcut) { throw "Uninstaller left the Start Menu shortcut behind." }
+          Write-Host "Installer launch and uninstall cleanup smoke tests passed."
       - name: Sign Windows installer
         if: env.WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
@@ -208,6 +274,7 @@ jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: read
@@ -435,6 +502,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           mkdir -p dist
           cp "$apk" dist/MySQLIDLE-Mobile-release.apk
+          echo "APK_SMOKE_PATH=dist/MySQLIDLE-Mobile-release.apk" >> "$GITHUB_ENV"
           if [[ "${ANDROID_KEYSTORE_WAS_REPLACED:-false}" == "true" ]]; then
             openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
               -in "$RUNNER_TEMP/mysqlidle-release.jks" \
@@ -451,6 +519,101 @@ jobs:
         run: |
           mkdir -p dist
           cp android-app/app/build/outputs/apk/debug/app-debug.apk dist/MySQLIDLE-Mobile-debug.apk
+          echo "APK_SMOKE_PATH=dist/MySQLIDLE-Mobile-debug.apk" >> "$GITHUB_ENV"
+      - name: Smoke-test APK on Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$APK_SMOKE_PATH"
+          sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          printf "no\n" | avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-35;google_apis;x86_64"
+          if [[ ! -s "$ANDROID_AVD_HOME/mysqlidle-smoke.ini" ]]; then
+            avdmanager list avd || true
+            find "$HOME/.android" -maxdepth 3 -type f -name "*.ini" -print || true
+            echo "avdmanager did not create the expected AVD definition." >&2
+            exit 1
+          fi
+          if [[ ! -e /dev/kvm ]]; then
+            echo "GitHub runner has no /dev/kvm device; x86_64 Android emulator cannot use hardware acceleration." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd mysqlidle-smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/mysqlidle-emulator.log" 2>&1 &
+          emulator_pid=$!
+          cleanup() {
+            timeout 10s adb emu kill >/dev/null 2>&1 || true
+            kill "$emulator_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          echo "Waiting for the Android emulator to appear in adb..."
+          if ! timeout 90s adb wait-for-device; then
+            cat "$RUNNER_TEMP/mysqlidle-emulator.log"
+            timeout 10s adb devices -l || true
+            echo "Android emulator did not appear in adb within 90 seconds." >&2
+            exit 1
+          fi
+          booted=false
+          for attempt in $(seq 1 60); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/mysqlidle-emulator.log"
+              echo "Android emulator process exited before boot completed." >&2
+              exit 1
+            fi
+            if ! boot_state="$(timeout 10s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"; then
+              cat "$RUNNER_TEMP/mysqlidle-emulator.log"
+              timeout 15s adb logcat -d -t 800 || true
+              echo "Android shell did not respond while checking boot state." >&2
+              exit 1
+            fi
+            if [[ "$boot_state" == "1" ]]; then
+              booted=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$booted" != "true" ]]; then
+            cat "$RUNNER_TEMP/mysqlidle-emulator.log"
+            timeout 15s adb logcat -d -t 800 || true
+            echo "Android emulator did not finish booting within 120 seconds." >&2
+            exit 1
+          fi
+          echo "Emulator booted; installing the APK..."
+          if ! timeout 60s adb install -r "$APK_SMOKE_PATH"; then
+            timeout 15s adb logcat -d -t 1000 || true
+            echo "APK installation failed or timed out." >&2
+            exit 1
+          fi
+          timeout 20s adb shell settings put global window_animation_scale 0
+          timeout 20s adb shell settings put global transition_animation_scale 0
+          timeout 20s adb shell am force-stop com.mysqlidle.mobile
+          echo "Launching MainActivity..."
+          if ! timeout 45s adb shell am start -W -n com.mysqlidle.mobile/.MainActivity; then
+            timeout 15s adb logcat -d -t 1200 || true
+            echo "MainActivity did not start successfully." >&2
+            exit 1
+          fi
+          sleep 2
+          app_pid="$(timeout 15s adb shell pidof com.mysqlidle.mobile 2>/dev/null | tr -d '\r' || true)"
+          if [[ -z "$app_pid" ]]; then
+            timeout 15s adb logcat -d -t 1200 || true
+            echo "APK process did not remain alive after launch." >&2
+            exit 1
+          fi
+          echo "App process is alive (PID $app_pid); checking branded connection screen..."
+          if ! timeout 45s adb shell uiautomator dump /sdcard/mysqlidle-window.xml >/dev/null; then
+            timeout 15s adb logcat -d -t 1200 || true
+            echo "Could not inspect the Android connection screen." >&2
+            exit 1
+          fi
+          if ! timeout 30s adb pull /sdcard/mysqlidle-window.xml "$RUNNER_TEMP/mysqlidle-window.xml" >/dev/null; then
+            echo "Could not retrieve the Android UI hierarchy." >&2
+            exit 1
+          fi
+          grep -q "Connect to the desktop companion" "$RUNNER_TEMP/mysqlidle-window.xml"
+          grep -q "MySQL IDLE logo" "$RUNNER_TEMP/mysqlidle-window.xml"
+          echo "APK installed and launched. MainActivity stayed alive and showed branded connection UI (PID $app_pid)." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
           name: MySQLIDLE-Android

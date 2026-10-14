@@ -17,8 +17,8 @@
 
 ## MySQL transport security
 
-- Windows and Android connection flows require verified TLS to MySQL by default. Enable verification and provide the MySQL CA certificate path when the database uses a private certificate authority.
-- Unchecking the TLS verification option is an explicit compatibility fallback for legacy database servers. It weakens protection against network interception and should not be the default.
+- Windows direct MySQL connections use certificate-optional TLS by default for localhost/self-signed compatibility; TLS is attempted when supported but the server certificate and hostname are not verified. Users can enable verification and provide the MySQL CA certificate path. The paired Android companion continues to require verified MySQL TLS by default. Its HTTPS session to the desktop separately checks a user-supplied SHA-256 fingerprint.
+- Certificate-optional TLS does not authenticate the server identity and is more vulnerable to network interception. For production or networks you do not fully trust, enable certificate/hostname verification and provide a trusted CA; keep the compatibility default limited to localhost or trusted networks.
 - The mobile CA path is resolved on the desktop computer, since the desktop process makes the actual MySQL connection.
 
 ## Files, packaging and releases

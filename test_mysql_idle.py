@@ -114,7 +114,10 @@ class SplitSQLTests(unittest.TestCase):
             legacy = root / "old.json"
             target = root / "app" / "settings.json"
             legacy.write_text(json.dumps({
-                "last_connection": {"host": "localhost", "user": "tester", "password": "legacy-secret"},
+                "last_connection": {
+                    "host": "localhost", "user": "tester", "password": "legacy-secret",
+                    "tls_verify": True,
+                },
                 "history": ["SELECT 1;"],
             }), encoding="utf-8")
             with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy), patch.object(mysql_idle, "SAVE_HISTORY", False):
@@ -123,11 +126,52 @@ class SplitSQLTests(unittest.TestCase):
             self.assertFalse(legacy.exists())
             self.assertEqual(cfg["last_connection"]["user"], "tester")
             self.assertNotIn("password", cfg["last_connection"])
+            self.assertFalse(cfg["last_connection"]["tls_verify"])
+            self.assertEqual(cfg["last_connection"]["tls_verify_setting_version"], 3)
             self.assertNotIn("history", cfg)
             migrated = target.read_text(encoding="utf-8")
             self.assertNotIn("legacy-secret", migrated)
             self.assertNotIn('"history"', migrated)
 
+
+    def test_existing_tls_preference_migrates_once_without_overwriting_new_user_choice(self):
+        with tempfile.TemporaryDirectory(prefix="mysql_idle_tls_migrate_") as tmp:
+            target = Path(tmp) / "settings.json"
+            legacy = Path(tmp) / "missing-legacy-settings.json"
+            target.write_text(json.dumps({
+                "last_connection": {
+                    "host": "localhost", "user": "tester", "tls_verify": True,
+                    "tls_verify_setting_version": 2,
+                }
+            }), encoding="utf-8")
+            with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy), patch.object(mysql_idle, "SAVE_HISTORY", False):
+                migrated = mysql_idle.load_config()
+                self.assertFalse(migrated["last_connection"]["tls_verify"])
+                self.assertEqual(migrated["last_connection"]["tls_verify_setting_version"], 3)
+
+                # A new explicit preference is preserved after the one-time migration.
+                migrated["last_connection"]["tls_verify"] = True
+                mysql_idle.save_config(migrated)
+                saved_again = mysql_idle.load_config()
+            self.assertTrue(saved_again["last_connection"]["tls_verify"])
+
+    def test_v2_saved_verified_tls_choice_is_reset_after_upgrade(self):
+        with tempfile.TemporaryDirectory(prefix="mysql_idle_tls_v2_upgrade_") as tmp:
+            target = Path(tmp) / "settings.json"
+            target.write_text(json.dumps({
+                "last_connection": {
+                    "host": "localhost", "port": 3306, "user": "root",
+                    "tls_verify": True, "tls_verify_setting_version": 2,
+                }
+            }), encoding="utf-8")
+            legacy = Path(tmp) / "missing-legacy-settings.json"
+            with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy), patch.object(mysql_idle, "SAVE_HISTORY", False):
+                migrated = mysql_idle.load_config()
+                self.assertFalse(migrated["last_connection"]["tls_verify"])
+                self.assertEqual(migrated["last_connection"]["tls_verify_setting_version"], 3)
+                saved = json.loads(target.read_text(encoding="utf-8"))
+                self.assertFalse(saved["last_connection"]["tls_verify"])
+                self.assertEqual(saved["last_connection"]["tls_verify_setting_version"], 3)
 
     def test_history_can_only_be_persisted_when_explicitly_enabled(self):
         with tempfile.TemporaryDirectory(prefix="mysql_idle_history_optin_") as tmp:
@@ -175,7 +219,7 @@ class ConnectionSecurityTests(unittest.TestCase):
         self.assertTrue(worker._credentials["tls_verify"])
         self.assertEqual(worker._credentials["ssl_ca"], str(ca_path))
 
-    def test_mysql_connect_can_disable_tls_verification_only_when_user_unchecks_it(self):
+    def test_mysql_connect_defaults_to_certificate_optional_tls_without_ca(self):
         events = __import__("queue").Queue()
         worker = mysql_idle.DatabaseWorker.__new__(mysql_idle.DatabaseWorker)
         worker.events = events
@@ -198,12 +242,13 @@ class ConnectionSecurityTests(unittest.TestCase):
                 "user": "tester",
                 "password": "test-password",
                 "database": None,
-                "ssl_ca": "",
-                "tls_verify": False,
+                # A stale optional CA path must not block the default mode.
+                "ssl_ca": "/path/that/does/not/exist/mysql-ca.pem",
                 "autocommit": True,
             })
         self.assertNotIn("ssl_verify_cert", captured)
         self.assertNotIn("ssl_verify_identity", captured)
+        self.assertNotIn("ssl_ca", captured)
         self.assertFalse(worker._credentials["tls_verify"])
 
 
