@@ -26,6 +26,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
+from feature_governor import FeatureGovernor
+
 import pymysql
 
 class RequestBodyTooLarge(ValueError):
@@ -83,11 +85,12 @@ function updateHistoryControls(){const total=queryHistory.length;$('historyBackB
 function rememberQuery(sql){if(queryHistory[queryHistory.length-1]!==sql){queryHistory.push(sql);if(queryHistory.length>50)queryHistory.shift();}historyIndex=queryHistory.length;historyDraft='';updateHistoryControls();}
 function moveHistory(direction){if(!queryHistory.length)return;const input=$('sql');if(historyIndex===queryHistory.length)historyDraft=input.value;const next=Math.max(0,Math.min(queryHistory.length,historyIndex+direction));if(next===historyIndex)return;historyIndex=next;input.value=historyIndex===queryHistory.length?historyDraft:queryHistory[historyIndex];input.focus();input.setSelectionRange(input.value.length,input.value.length);updateHistoryControls();}
 function clearQueryHistory(){queryHistory.length=0;historyIndex=0;historyDraft='';updateHistoryControls();}
-async function api(path,data,method='POST'){const headers={};if(method!=='GET')headers['Content-Type']='application/json';if(sessionToken)headers.Authorization='Bearer '+sessionToken;const response=await fetch(path,{method,headers,body:method==='GET'?undefined:JSON.stringify(data||{})});let json={};try{json=await response.json()}catch{}if(response.status===401){const message=json.error||'Pairing expired. Pair again.';clearSession();throw new Error(message)}if(!response.ok||json.ok===false)throw new Error(json.error||('Request failed ('+response.status+')'));return json;}
+async function api(path,data,method='POST'){const headers={};if(method!=='GET')headers['Content-Type']='application/json';if(sessionToken)headers.Authorization='Bearer '+sessionToken;const response=await fetch(path,{method,headers,body:method==='GET'?undefined:JSON.stringify(data||{})});let json={};try{json=await response.json()}catch{}if(response.status===401){const message=json.error||'Pairing expired. Pair again.';clearSession();throw new Error(message)}if(!response.ok||json.ok===false)throw Object.assign(new Error(json.error||('Request failed ('+response.status+')')),json);return json;}
 $('passwordToggle').onclick=()=>{const reveal=$('password').type==='password';$('password').type=reveal?'text':'password';$('passwordToggle').textContent=reveal?'Hide':'Show';$('passwordToggle').setAttribute('aria-pressed',String(reveal));$('passwordToggle').setAttribute('aria-label',reveal?'Hide password':'Show password');};
 $('pairBtn').onclick=async()=>{const btn=$('pairBtn');btn.disabled=true;try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:$('pairCode').value.trim()})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Pairing failed');sessionToken=j.token;sessionStorage.setItem('mysqlIdleMobileSession',sessionToken);showApp(true);status('dbStatus','Not connected');$('connectionBadge').textContent='Paired · not connected';status('pairStatus','Device paired. Connect to MySQL below.','good');}catch(e){status('pairStatus',e.message,'bad')}finally{btn.disabled=false}};
 $('connectBtn').onclick=async()=>{const b=$('connectBtn');b.disabled=true;status('dbStatus','Connecting…');try{const r=await api('/api/connect',{host:$('host').value.trim(),port:$('port').value.trim(),user:$('user').value,password:$('password').value,database:$('database').value.trim(),autocommit:$('autocommit').checked,tlsVerify:$('tlsVerify').checked,sslCa:$('tlsCa').value.trim()});setConnectedState(true);lastResult=false;$('resultPanel').classList.add('hidden');$('resultTable').textContent='Run a query to see results.';status('dbStatus','Connected to '+r.serverVersion,'good');$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('password').value='';updateActionStates();}catch(e){status('dbStatus',e.message+(connected?' The previous connection is still active.':''),'bad');}finally{b.disabled=false;updateActionStates()}};
-$('runBtn').onclick=async()=>{const sql=$('sql').value.trim();if(!sql){status('queryStatus','Enter a SQL statement first.');return}rememberQuery(sql);queryRunning=true;updateActionStates();lastResult=false;updateActionStates();status('queryStatus','Running query…');$('metrics').replaceChildren();$('resultTable').textContent='Query running…';$('resultPanel').classList.remove('hidden');try{const r=await api('/api/query',{sql});status('queryStatus',r.message||'Query completed.','good');if(r.database!==undefined)$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('metrics').replaceChildren();[['Rows',r.rowCount],['Time',r.elapsed.toFixed(3)+' s'],['Mode',r.hasResult?'result set':'statement']].forEach(([k,v])=>{const span=document.createElement('span');const strong=document.createElement('strong');strong.textContent=k+': ';span.append(strong,document.createTextNode(String(v)));$('metrics').append(span)});renderTable(r.columns||[],r.preview||[]);lastResult=!!r.hasResult;$('resultPanel').classList.remove('hidden');if(r.truncated||r.truncatedColumns){const notes=[];if(r.truncated)notes.push(`first ${r.preview.length} rows of ${r.rowCount}`);if(r.truncatedColumns)notes.push(`first ${r.columns.length} of ${r.totalColumns} columns`);status('queryStatus',`Preview limited to ${notes.join(' and ')}. Export contains the complete result.`,'good');}}catch(e){status('queryStatus',e.message,'bad')}finally{queryRunning=false;updateActionStates()}};
+async function governedQuery(sql){try{return await api('/api/query',{sql})}catch(e){if(!e.approval_required||!e.approvalToken)throw e;const promptText='Feature Governance flagged '+(e.category||'high-impact')+' SQL ('+(e.risk||'high')+' risk).\n\n'+(e.reason||'This statement may cause significant changes.')+'\n\nApprove this exact statement once?';if(!window.confirm(promptText))throw new Error('Cancelled by Feature Governance.');return api('/api/query',{sql,approvalToken:e.approvalToken})}}
+$('runBtn').onclick=async()=>{const sql=$('sql').value.trim();if(!sql){status('queryStatus','Enter a SQL statement first.');return}rememberQuery(sql);queryRunning=true;updateActionStates();lastResult=false;updateActionStates();status('queryStatus','Running query…');$('metrics').replaceChildren();$('resultTable').textContent='Query running…';$('resultPanel').classList.remove('hidden');try{const r=await governedQuery(sql);status('queryStatus',r.message||'Query completed.','good');if(r.database!==undefined)$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('metrics').replaceChildren();[['Rows',r.rowCount],['Time',r.elapsed.toFixed(3)+' s'],['Mode',r.hasResult?'result set':'statement']].forEach(([k,v])=>{const span=document.createElement('span');const strong=document.createElement('strong');strong.textContent=k+': ';span.append(strong,document.createTextNode(String(v)));$('metrics').append(span)});renderTable(r.columns||[],r.preview||[]);lastResult=!!r.hasResult;$('resultPanel').classList.remove('hidden');if(r.truncated||r.truncatedColumns){const notes=[];if(r.truncated)notes.push(`first ${r.preview.length} rows of ${r.rowCount}`);if(r.truncatedColumns)notes.push(`first ${r.columns.length} of ${r.totalColumns} columns`);status('queryStatus',`Preview limited to ${notes.join(' and ')}. Export contains the complete result.`,'good');}}catch(e){status('queryStatus',e.message,'bad')}finally{queryRunning=false;updateActionStates()}};
 function renderTable(columns,rows){const wrap=$('resultTable');wrap.replaceChildren();if(!columns.length){wrap.textContent='Statement completed without a result set.';return}const table=document.createElement('table'),thead=document.createElement('thead'),hr=document.createElement('tr');columns.forEach(c=>{const th=document.createElement('th');th.scope='col';th.textContent=c;hr.append(th)});thead.append(hr);table.append(thead);const body=document.createElement('tbody');rows.forEach(row=>{const tr=document.createElement('tr');row.forEach(v=>{const td=document.createElement('td');if(v===null){td.textContent='NULL';td.className='null'}else td.textContent=String(v);tr.append(td)});body.append(tr)});table.append(body);wrap.append(table);if(!rows.length){const p=document.createElement('div');p.className='muted';p.style.padding='12px';p.textContent='Empty result set.';wrap.append(p)}}
 $('exportBtn').onclick=async()=>{try{const response=await fetch('/api/export',{headers:{Authorization:'Bearer '+sessionToken}});if(response.status===401){clearSession();throw new Error('Pairing expired. Pair again.')}if(!response.ok){let message='Export unavailable ('+response.status+').';try{const body=await response.json();message=body.error||message}catch{}throw new Error(message)}const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='mysql_idle_result.csv';document.body.append(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){status('queryStatus',e.message,'bad')}};
 async function txn(action){try{const r=await api('/api/transaction',{action});status('queryStatus',r.message,'good')}catch(e){status('queryStatus',e.message,'bad')}}
@@ -242,6 +245,8 @@ class _MobileSession:
         self.server_version = ""
         self.last_result_path = None
         self.last_result_columns = None
+        # Challenges are random, session-bound, single-use, and short-lived.
+        self.pending_approvals = {}
 
     def touch(self):
         self.last_active = time.monotonic()
@@ -257,6 +262,7 @@ class _MobileSession:
             self.current_db = None
             result_path, self.last_result_path = self.last_result_path, None
             self.last_result_columns = None
+            self.pending_approvals.clear()
             if result_path:
                 try:
                     os.unlink(result_path)
@@ -267,7 +273,7 @@ class _MobileSession:
 class MobileCompanionServer:
     """Start/stop the mobile companion. Public-LAN access is never automatic."""
 
-    def __init__(self, port=8765, bind_host=None):
+    def __init__(self, port=8765, bind_host=None, governor=None):
         if bind_host is None:
             bind_host = _local_ip()
             if bind_host == "127.0.0.1":
@@ -292,6 +298,7 @@ class MobileCompanionServer:
         self._serve_thread = None
         self.port_requested = int(port)
         self.bind_host = str(bind_host)
+        self.governor = governor or FeatureGovernor()
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -594,6 +601,76 @@ class MobileCompanionServer:
                 if len(sql.encode("utf-8")) > MAX_SQL_BYTES:
                     self._json(413, {"ok": False, "error": "SQL statement exceeds the 256 KiB limit."})
                     return
+
+                # Govern before touching the DB cursor. A challenge is tied to this
+                # session and exact SQL digest, expires quickly, and can be used once.
+                assessment = owner.governor.inspect_sql(sql)
+                if assessment["decision"] == "block":
+                    owner.governor.record_decision(sql, "block", str(assessment["reason"]),
+                                                   str(assessment["category"]), str(assessment["risk"]))
+                    self._json(403, {"ok": False, "error": str(assessment["reason"]),
+                                     "governance_blocked": True, "risk": assessment["risk"]})
+                    return
+
+                approved = False
+                if assessment["decision"] == "confirm":
+                    approval_token = str(data.get("approvalToken", "")).strip()[:128]
+                    digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+                    now = time.monotonic()
+                    challenge_token = None
+                    with session.lock:
+                        session.pending_approvals = {
+                            token: item for token, item in session.pending_approvals.items()
+                            if item[1] > now
+                        }
+                        if not approval_token:
+                            # Bound challenge memory even for a noisy paired client.
+                            while len(session.pending_approvals) >= 16:
+                                session.pending_approvals.pop(next(iter(session.pending_approvals)))
+                            challenge_token = secrets.token_urlsafe(32)
+                            session.pending_approvals[challenge_token] = (
+                                digest, now + 45.0
+                            )
+                        else:
+                            issued = session.pending_approvals.pop(approval_token, None)
+                            approved = bool(
+                                issued and issued[1] > now and
+                                secrets.compare_digest(issued[0], digest)
+                            )
+                    if challenge_token:
+                        reason = str(assessment["reason"])
+                        owner.governor.record_decision(
+                            sql, "confirmation_required", reason,
+                            str(assessment["category"]), str(assessment["risk"]),
+                        )
+                        self._json(409, {
+                            "ok": False,
+                            "error": "High-impact SQL requires explicit approval.",
+                            "approval_required": True,
+                            "approvalToken": challenge_token,
+                            "reason": reason,
+                            "category": assessment["category"],
+                            "risk": assessment["risk"],
+                        })
+                        return
+                    if not approved:
+                        owner.governor.record_decision(
+                            sql, "approval_rejected", "Invalid, expired, or mismatched one-time approval.",
+                            str(assessment["category"]), str(assessment["risk"]),
+                        )
+                        self._json(403, {
+                            "ok": False,
+                            "error": "Approval expired or did not match this exact statement. Run it again to request a fresh approval.",
+                            "governance_blocked": True,
+                        })
+                        return
+
+                policy = owner.governor.check_sql(sql, externally_approved=approved)
+                if policy["decision"] != "allow":
+                    self._json(403, {"ok": False, "error": str(policy["reason"]),
+                                     "governance_blocked": True, "risk": policy["risk"]})
+                    return
+
                 started = time.perf_counter()
                 with session.lock:
                     if session.conn is None:
@@ -681,6 +758,11 @@ class MobileCompanionServer:
                     if session.conn is None:
                         self._json(400, {"ok": False, "error": "Connect to MySQL first."})
                         return
+                    if action == "commit" and owner.governor.read_only:
+                        message = "Read-only policy blocks COMMIT because it could persist pending changes. Roll back, or disable read-only mode if this commit is intentional."
+                        owner.governor.record_decision("COMMIT", "block", message, "transaction", "high")
+                        self._json(403, {"ok": False, "error": message, "governance_blocked": True})
+                        return
                     try:
                         getattr(session.conn, action)()
                         self._json(200, {"ok": True, "message": action.capitalize() + " completed."})
@@ -714,6 +796,8 @@ class MobileCompanionServer:
                 session.close()
 
     def start(self):
+        if not self.governor.feature_enabled("mobile_companion"):
+            raise RuntimeError("Feature Governance has disabled the mobile companion.")
         if self._closed:
             raise RuntimeError("This mobile companion has already been stopped.")
         if self._running:

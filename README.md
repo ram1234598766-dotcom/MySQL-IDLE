@@ -42,6 +42,18 @@ Both Windows and Android connection dialogs now request verified TLS to MySQL by
 
 The mobile SQL editor includes previous/next query history (at most 50 entries in page memory, cleared on disconnect or session expiry) and quick templates for server version, current database, database/table lists, and server time. Mobile query history is never written to persistent browser storage. On Windows, SQL history remains in memory by default and is only persisted after setting `MYSQLIDLE_SAVE_HISTORY=1` before starting the app. Review templates before execution; SQL runs with the connected MySQL account's permissions.
 
+## Feature Governance
+
+MySQL IDLE now has a shared local policy engine for the Windows SQL worker and paired Android companion. Open **Tools → Feature Governance** on Windows to configure the session policy and review recent decisions.
+
+- **Guarded mode** is the default. High-impact SQL such as destructive DDL, administrative/file-related SQL, and `UPDATE` or `DELETE` without a `WHERE` clause requires explicit one-time approval.
+- **Read-only mode** blocks statements classified as mutations or administration. The SQL is checked before queueing and checked again at the Windows execution boundary; the mobile server checks policy before using the database cursor.
+- **Mobile step-up approval** uses a short-lived, random, single-use challenge bound to the exact SQL digest and paired session. A declined, expired, replayed, or mismatched approval is rejected.
+- **Privacy-preserving audit** keeps at most 256 events in memory. Entries include time, decision, risk category, reason and a truncated SHA-256 statement fingerprint; they do not retain SQL text, literals, passwords or connection credentials.
+- Policies are saved with other local app preferences. The environment variable `MYSQLIDLE_READ_ONLY=1` forces read-only mode, and `MYSQLIDLE_DISABLE_MOBILE=1` disables the mobile companion. Environment-enforced restrictions cannot be switched off in the UI.
+
+The governor uses conservative lexical SQL classification, not a full MySQL parser, and is defense-in-depth rather than a replacement for least-privilege database accounts, backups, transactions and server-side permissions. SQL running under the connected MySQL account still has the permissions granted by that server.
+
 ## Security and verification
 
 Review `SECURITY.md`. Automated tests cover SQL parsing, result streaming, HTTPS certificate handling, request-size/resource limits, Host/Origin validation, TLS connection settings and mobile endpoint behavior. CI runs desktop helper tests on Windows, the mobile HTTPS integration suite on Linux, and builds the Windows/Android packages. A successful GitHub Actions run is the authoritative check for the actual platform binaries. Windows assets are not code-signed unless a trusted Windows signing certificate is configured.
