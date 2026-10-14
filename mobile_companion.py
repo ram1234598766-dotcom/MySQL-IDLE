@@ -200,10 +200,10 @@ class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
         if not self._request_slots.acquire(blocking=False):
             body = b"Service busy. Try again shortly."
             response = (
-                b"HTTP/1.1 503 Service Unavailable\\r\\n"
-                b"Connection: close\\r\\n"
-                b"Content-Type: text/plain; charset=utf-8\\r\\n"
-                + f"Content-Length: {len(body)}\\r\\n\\r\\n".encode("ascii")
+                b"HTTP/1.1 503 Service Unavailable\r\n"
+                b"Connection: close\r\n"
+                b"Content-Type: text/plain; charset=utf-8\r\n"
+                + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
                 + body
             )
             try:
