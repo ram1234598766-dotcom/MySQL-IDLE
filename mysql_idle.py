@@ -101,7 +101,7 @@ LEGACY_CONFIG_PATH = Path.home() / ".mysql_idle.json"
 # SQL text can contain literals or tokens. Disk persistence is opt-in.
 SAVE_HISTORY = os.environ.get("MYSQLIDLE_SAVE_HISTORY", "").strip().lower() in {"1", "true", "yes"}
 MAX_HISTORY = 200
-TLS_PREFERENCE_SCHEMA_VERSION = 2
+TLS_PREFERENCE_SCHEMA_VERSION = 3
 DEFAULT_MYSQL_TLS_VERIFY = False
 MAX_SHELL_LINES = 20000
 FETCH_BATCH_SIZE = 512
@@ -292,10 +292,11 @@ def load_config():
             tls_preference_migrated = False
             if isinstance(last, dict):
                 last.pop("password", None)
-                # Previous versions persisted their verified-TLS default without
-                # recording whether the checkbox was explicitly enabled. Normalize
-                # those legacy profiles once to avoid breaking common self-signed
-                # localhost MySQL installations after an upgrade.
+                # Normalize saved connection profiles when the TLS preference
+                # contract changes. Version 3 makes certificate verification opt-in
+                # again so upgrades do not retain a stale "verify" choice that blocks
+                # local servers using a self-signed certificate. Users can still opt
+                # into verification from Connect to MySQL and supply a trusted CA.
                 if last.get("tls_verify_setting_version") != TLS_PREFERENCE_SCHEMA_VERSION:
                     last["tls_verify"] = DEFAULT_MYSQL_TLS_VERIFY
                     last["tls_verify_setting_version"] = TLS_PREFERENCE_SCHEMA_VERSION
