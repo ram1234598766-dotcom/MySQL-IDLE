@@ -267,8 +267,12 @@ jobs:
         run: |
           set -euo pipefail
           store="$RUNNER_TEMP/mysqlidle-release.jks"
+          if ! keytool -list -keystore "$store" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1; then
+            echo "::error::Keystore store-password validation failed. Check ANDROID_KEYSTORE_PASSWORD for the exact file in ANDROID_KEYSTORE_BASE64. Secret values are never printed."
+            exit 1
+          fi
           if ! keytool -list -keystore "$store" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
-            echo "::error::Keystore validation failed. Check ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS. Secret values are never printed."
+            echo "::error::The keystore password is valid, but ANDROID_KEY_ALIAS was not found in this keystore. Check the exact alias name. Secret values are never printed."
             exit 1
           fi
           check_dir="$(mktemp -d)"
