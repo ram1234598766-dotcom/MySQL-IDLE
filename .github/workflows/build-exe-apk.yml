@@ -199,6 +199,10 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "mysqlidle-installer-smoke-appdata"
+          $desktopDir = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
+          if ([string]::IsNullOrWhiteSpace($desktopDir)) { throw "Could not resolve the Windows Desktop folder." }
+          New-Item -ItemType Directory -Path $desktopDir -Force | Out-Null
+          $desktopShortcut = Join-Path $desktopDir "MySQL IDLE.lnk"
           $installDir = Join-Path $env:RUNNER_TEMP "MySQLIDLE-Install-Smoke"
           $setup = (Resolve-Path "dist\MySQLIDLE-Setup.exe").Path
           $installArgs = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDir")
@@ -207,6 +211,18 @@ jobs:
 
           $installedExe = Join-Path $installDir "mysql_idle.exe"
           if (!(Test-Path $installedExe)) { throw "Installer did not place the desktop executable." }
+          if (!(Test-Path $desktopShortcut)) { throw "Installer did not create the MySQL IDLE desktop shortcut." }
+          $expectedIcon = Join-Path $installDir "assets\mysqlidle.ico"
+          if (!(Test-Path $expectedIcon)) { throw "Installer did not install the shared ICO asset." }
+          $shell = New-Object -ComObject WScript.Shell
+          $shortcut = $shell.CreateShortcut($desktopShortcut)
+          if ([IO.Path]::GetFullPath($shortcut.TargetPath) -ine [IO.Path]::GetFullPath($installedExe)) {
+            throw "Desktop shortcut target does not point to the installed executable."
+          }
+          $shortcutIcon = ($shortcut.IconLocation -replace ',\s*\d+$', '').Trim()
+          if ([IO.Path]::GetFullPath($shortcutIcon) -ine [IO.Path]::GetFullPath($expectedIcon)) {
+            throw "Desktop shortcut does not use the installed MySQL IDLE icon."
+          }
           $app = Start-Process -FilePath $installedExe -WorkingDirectory $installDir -PassThru
           try {
             for ($second = 0; $second -lt 10; $second++) {
@@ -231,7 +247,8 @@ jobs:
 
           $startMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\MySQL IDLE.lnk"
           if (Test-Path $startMenuShortcut) { throw "Uninstaller left the Start Menu shortcut behind." }
-          Write-Host "Installer launch and uninstall cleanup smoke tests passed."
+          if (Test-Path $desktopShortcut) { throw "Uninstaller left the desktop shortcut behind." }
+          Write-Host "Installer launch, branded Desktop/Start Menu shortcuts, and uninstall cleanup smoke tests passed."
       - name: Sign Windows installer
         if: env.WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
