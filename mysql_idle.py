@@ -439,6 +439,16 @@ class ConnectDialog(tk.Toplevel):
             entry.grid(row=row, column=1, pady=4)
             self.vars[key] = var
             entries[key] = entry
+            if secret:
+                visible = tk.BooleanVar(value=False)
+                ttk.Checkbutton(
+                    self,
+                    text="Show",
+                    variable=visible,
+                    command=lambda e=entry, v=visible: e.configure(
+                        show="" if v.get() else "*"
+                    ),
+                ).grid(row=row, column=2, sticky="w", padx=(8, 0), pady=4)
 
         buttons = tk.Frame(self, bg="white")
         buttons.grid(row=len(self.FIELDS), column=0, columnspan=2, sticky="e", pady=(12, 0))
