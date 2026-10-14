@@ -28,6 +28,7 @@ class PackagingBrandingTests(unittest.TestCase):
 
     def test_installer_is_branded_and_removes_installed_program_files(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
+        self.assertNotIn('[UninstallDelete]\nType: filesandordirs; Name: "{app}"', source)
         for expected in (
             "SetupIconFile=",
             "WizardImageFile=",
