@@ -513,6 +513,7 @@ jobs:
         run: |
           mkdir -p dist
           cp android-app/app/build/outputs/apk/debug/app-debug.apk dist/MySQLIDLE-Mobile-debug.apk
+          echo "APK_SMOKE_PATH=dist/MySQLIDLE-Mobile-debug.apk" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v7
         with:
           name: MySQLIDLE-Android
