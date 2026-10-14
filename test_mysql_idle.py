@@ -96,7 +96,7 @@ class SplitSQLTests(unittest.TestCase):
     def test_config_save_never_persists_password(self):
         with tempfile.TemporaryDirectory(prefix="mysql_idle_config_test_") as tmp:
             target = Path(tmp) / "settings.json"
-            with patch.object(mysql_idle, "CONFIG_PATH", target):
+            with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "SAVE_HISTORY", False):
                 mysql_idle.save_config({
                     "last_connection": {
                         "host": "localhost", "user": "tester", "password": "never-save-me"
@@ -106,6 +106,7 @@ class SplitSQLTests(unittest.TestCase):
             saved = target.read_text(encoding="utf-8")
             self.assertNotIn("never-save-me", saved)
             self.assertNotIn('"password"', saved)
+            self.assertNotIn('"history"', saved)
 
     def test_legacy_settings_are_migrated_and_secret_removed(self):
         with tempfile.TemporaryDirectory(prefix="mysql_idle_migrate_test_") as tmp:
@@ -116,13 +117,94 @@ class SplitSQLTests(unittest.TestCase):
                 "last_connection": {"host": "localhost", "user": "tester", "password": "legacy-secret"},
                 "history": ["SELECT 1;"],
             }), encoding="utf-8")
-            with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy):
+            with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy), patch.object(mysql_idle, "SAVE_HISTORY", False):
                 cfg = mysql_idle.load_config()
             self.assertTrue(target.is_file())
             self.assertFalse(legacy.exists())
             self.assertEqual(cfg["last_connection"]["user"], "tester")
             self.assertNotIn("password", cfg["last_connection"])
-            self.assertNotIn("legacy-secret", target.read_text(encoding="utf-8"))
+            self.assertNotIn("history", cfg)
+            migrated = target.read_text(encoding="utf-8")
+            self.assertNotIn("legacy-secret", migrated)
+            self.assertNotIn('"history"', migrated)
+
+
+    def test_history_can_only_be_persisted_when_explicitly_enabled(self):
+        with tempfile.TemporaryDirectory(prefix="mysql_idle_history_optin_") as tmp:
+            target = Path(tmp) / "settings.json"
+            with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "SAVE_HISTORY", True):
+                mysql_idle.save_config({"history": ["SELECT 1;", "SELECT 'private literal';"]})
+            saved = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(saved["history"], ["SELECT 1;", "SELECT 'private literal';"])
+
+
+class ConnectionSecurityTests(unittest.TestCase):
+    def test_mysql_connect_requires_verified_tls_and_forwards_ca_path(self):
+        events = __import__("queue").Queue()
+        worker = mysql_idle.DatabaseWorker.__new__(mysql_idle.DatabaseWorker)
+        worker.events = events
+        worker.conn = None
+        worker.conn_info = {}
+        worker.current_db = None
+        worker.identifiers = set()
+        worker._credentials = None
+        worker.output = lambda *args, **kwargs: None
+        worker._refresh_state = lambda: None
+        fake_connection = types.SimpleNamespace(
+            get_server_info=lambda: "8.0-test",
+            close=lambda: None,
+        )
+        captured = {}
+        with tempfile.TemporaryDirectory(prefix="mysql_idle_tls_") as tmp:
+            ca_path = Path(tmp) / "mysql-ca.pem"
+            ca_path.write_text("test-only CA placeholder", encoding="ascii")
+            with patch.object(mysql_idle.pymysql, "connect", side_effect=lambda **kwargs: (captured.update(kwargs) or fake_connection)):
+                worker._connect({
+                    "host": "db.example.test",
+                    "port": 3306,
+                    "user": "tester",
+                    "password": "test-password",
+                    "database": "sample",
+                    "ssl_ca": str(ca_path),
+                    "tls_verify": True,
+                    "autocommit": True,
+                })
+        self.assertTrue(captured["ssl_verify_cert"])
+        self.assertTrue(captured["ssl_verify_identity"])
+        self.assertEqual(captured["ssl_ca"], str(ca_path))
+        self.assertTrue(worker._credentials["tls_verify"])
+        self.assertEqual(worker._credentials["ssl_ca"], str(ca_path))
+
+    def test_mysql_connect_can_disable_tls_verification_only_when_user_unchecks_it(self):
+        events = __import__("queue").Queue()
+        worker = mysql_idle.DatabaseWorker.__new__(mysql_idle.DatabaseWorker)
+        worker.events = events
+        worker.conn = None
+        worker.conn_info = {}
+        worker.current_db = None
+        worker.identifiers = set()
+        worker._credentials = None
+        worker.output = lambda *args, **kwargs: None
+        worker._refresh_state = lambda: None
+        fake_connection = types.SimpleNamespace(
+            get_server_info=lambda: "8.0-test",
+            close=lambda: None,
+        )
+        captured = {}
+        with patch.object(mysql_idle.pymysql, "connect", side_effect=lambda **kwargs: (captured.update(kwargs) or fake_connection)):
+            worker._connect({
+                "host": "localhost",
+                "port": 3306,
+                "user": "tester",
+                "password": "test-password",
+                "database": None,
+                "ssl_ca": "",
+                "tls_verify": False,
+                "autocommit": True,
+            })
+        self.assertNotIn("ssl_verify_cert", captured)
+        self.assertNotIn("ssl_verify_identity", captured)
+        self.assertFalse(worker._credentials["tls_verify"])
 
 
 class RuntimeBootstrapTests(unittest.TestCase):

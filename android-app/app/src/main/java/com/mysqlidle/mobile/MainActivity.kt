@@ -1,9 +1,9 @@
 package com.mysqlidle.mobile
 
 import android.app.Activity
-import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -14,8 +14,13 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
+import android.net.http.SslCertificate
 import android.net.http.SslError
 import android.widget.Button
+import java.io.ByteArrayInputStream
+import java.security.MessageDigest
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -29,6 +34,7 @@ class MainActivity : Activity() {
     private var root: LinearLayout? = null
     private var web: WebView? = null
     private var baseUri: Uri? = null
+    private var pinnedFingerprint: String = ""
     private val blue = Color.rgb(37, 99, 235)
     private val ink = Color.rgb(15, 23, 42)
     private val muted = Color.rgb(100, 116, 139)
@@ -101,8 +107,9 @@ class MainActivity : Activity() {
             setTypeface(null, android.graphics.Typeface.BOLD)
         })
         page.addView(label(
-            "Start MySQL IDLE on your computer, open Tools → Android / Mobile Companion, " +
-                "then enter the address shown by the desktop app.",
+            "On the Windows desktop, open Tools → Android / Mobile Companion. Enter the HTTPS " +
+                "address and the SHA-256 certificate fingerprint shown there. Compare every " +
+                "fingerprint pair before connecting; the certificate changes when the companion restarts.",
             14f, muted
         ).apply { setPadding(0, dp(8), 0, dp(18)) })
 
@@ -110,7 +117,7 @@ class MainActivity : Activity() {
             setTypeface(null, android.graphics.Typeface.BOLD)
         })
         val address = EditText(this).apply {
-            hint = "http://192.168.1.10:8765"
+            hint = "https://192.168.1.20:8765"
             setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_URI
@@ -123,46 +130,105 @@ class MainActivity : Activity() {
             topMargin = dp(8)
             bottomMargin = dp(14)
         })
+        page.addView(label("Desktop certificate SHA-256 fingerprint", 14f).apply {
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+        val fingerprint = EditText(this).apply {
+            hint = "AA:BB:CC:… (64 hex digits)"
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = EditorInfo.IME_ACTION_GO
+            setText(pinnedFingerprint)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setBackgroundColor(Color.WHITE)
+        }
+        page.addView(fingerprint, LinearLayout.LayoutParams(-1, dp(56)).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(10)
+        })
+        page.addView(label(
+            "HTTPS is mandatory. Copy the fingerprint from the desktop window over a trusted channel; " +
+                "do not accept an unexpected certificate or an error you cannot explain.",
+            12f, muted
+        ).apply { setPadding(0, 0, 0, dp(14)) })
         if (error != null) {
             page.addView(label(error, 14f, Color.rgb(185, 28, 28)).apply {
                 setPadding(0, 0, 0, dp(10))
             })
         }
-        page.addView(button("Connect", onClick = { connect(address.text.toString()) }),
-            LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(22) })
+        page.addView(button("Verify and connect", onClick = {
+            connect(address.text.toString(), fingerprint.text.toString())
+        }), LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(22) })
 
         page.addView(label("Network security", 16f).apply {
             setTypeface(null, android.graphics.Typeface.BOLD)
         })
         page.addView(label(
-            "This app opens your desktop's mobile companion inside a WebView. The local HTTP " +
-                "connection is not encrypted. Use a trusted private Wi-Fi network only; never " +
-                "publish or port-forward the companion to the public internet. Pairing is handled " +
-                "by the desktop companion. This app does not save your MySQL password.",
+            "The app pins the desktop's HTTPS certificate using the SHA-256 fingerprint you provide. " +
+                "Only private LAN IPv4 addresses are accepted. MySQL credentials are sent after pairing, " +
+                "and are not saved by this app.",
             13f, muted
         ).apply { setPadding(0, dp(8), 0, dp(18)) })
         page.addView(label("Tip: allow the desktop application through your private-network firewall.",
             13f, muted))
     }
 
-    private fun connect(raw: String) {
+    private fun connect(raw: String, rawFingerprint: String) {
         val text = raw.trim().trimEnd('/')
         val parsed = runCatching { java.net.URI(text) }.getOrNull()
-        if (parsed == null || parsed.scheme?.lowercase() !in listOf("http", "https") ||
-            parsed.host.isNullOrBlank() || parsed.rawUserInfo != null ||
+        val host = parsed?.host?.lowercase().orEmpty()
+        val fingerprint = normalizeFingerprint(rawFingerprint)
+        if (parsed == null || parsed.scheme?.lowercase() != "https" ||
+            host.isBlank() || !isPrivateLanHost(host) || parsed.rawUserInfo != null ||
             parsed.rawPath !in listOf("", "/") || parsed.rawQuery != null ||
-            parsed.rawFragment != null || (parsed.port != -1 && parsed.port !in 1..65535)) {
+            parsed.rawFragment != null || parsed.port !in 1..65535) {
             showConnectScreen(
-                "Enter the desktop root URL, such as http://192.168.1.10:8765, " +
-                    "without a path, query, fragment or username."
+                "Enter an HTTPS root URL using a private LAN IPv4 address (for example, " +
+                    "https://192.168.1.20:8765), without a path, query, fragment or username."
             )
             return
         }
-        val uri = Uri.parse(parsed.toASCIIString())
-        baseUri = uri
+        if (fingerprint == null) {
+            showConnectScreen("Enter the complete 64-hex-digit SHA-256 certificate fingerprint from the desktop.")
+            return
+        }
+        pinnedFingerprint = fingerprint
+        baseUri = Uri.parse(parsed.toASCIIString())
         prefs.edit().putString("server_url", text).apply()
-        showWebView(uri)
+        showWebView(requireNotNull(baseUri))
     }
+
+    private fun normalizeFingerprint(raw: String): String? {
+        val compact = raw.trim().replace(Regex("[:\\-\\s]"), "")
+        return compact.uppercase().takeIf { it.matches(Regex("^[0-9A-F]{64}$")) }
+    }
+
+    private fun isPrivateLanHost(host: String): Boolean {
+        if (host == "localhost") return true
+        val parts = host.split(".")
+        if (parts.size != 4) return false
+        val octets = parts.map { it.toIntOrNull() ?: return false }
+        if (octets.any { it !in 0..255 }) return false
+        val a = octets[0]
+        val b = octets[1]
+        return a == 10 || a == 127 || (a == 192 && b == 168) ||
+            (a == 172 && b in 16..31) || (a == 169 && b == 254)
+    }
+
+    private fun certificateFingerprint(error: SslError): String? = runCatching {
+        val certificate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            error.certificate.x509Certificate
+        } else {
+            // SslCertificate exposes the encoded leaf in its saved state on older Android releases.
+            val state = SslCertificate.saveState(error.certificate) ?: return null
+            val bytes = state.getByteArray("x509-certificate") ?: return null
+            CertificateFactory.getInstance("X.509")
+                .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
+        } ?: return null
+        MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
+            .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0').uppercase() }
+    }.getOrNull()
 
     private fun showWebView(uri: Uri) {
         val page = LinearLayout(this).apply {
@@ -220,6 +286,9 @@ class MainActivity : Activity() {
         browser.settings.javaScriptCanOpenWindowsAutomatically = false
         browser.settings.setSupportMultipleWindows(false)
         browser.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            browser.settings.safeBrowsingEnabled = true
+        }
         var pageLoadFailed = false
         browser.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
@@ -258,20 +327,32 @@ class MainActivity : Activity() {
                     target.host == base.host && target.port == base.port) {
                     return false
                 }
-                return try {
-                    startActivity(Intent(Intent.ACTION_VIEW, target))
-                    true
-                } catch (_: Exception) {
-                    Toast.makeText(this@MainActivity, "Unable to open this link.", Toast.LENGTH_SHORT).show()
-                    true
-                }
+                Toast.makeText(
+                    this@MainActivity,
+                    "Blocked navigation outside the verified desktop companion.",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return true
             }
 
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+                val actualFingerprint = certificateFingerprint(error)
+                val isOnlyUntrustedCertificate = error.primaryError == SslError.SSL_UNTRUSTED
+                if (isOnlyUntrustedCertificate && actualFingerprint != null &&
+                    actualFingerprint.equals(pinnedFingerprint, ignoreCase = true)) {
+                    handler.proceed()
+                    return
+                }
                 handler.cancel()
                 pageLoadFailed = true
                 loadingBar.visibility = View.GONE
-                loadingStatus.text = "Secure connection failed certificate checks. Verify the URL and certificate, then refresh."
+                loadingStatus.text = if (actualFingerprint == null) {
+                    "TLS certificate could not be inspected. Connection blocked."
+                } else if (isOnlyUntrustedCertificate) {
+                    "TLS certificate fingerprint mismatch. Compare the complete fingerprint with the value displayed on the desktop; connection blocked."
+                } else {
+                    "TLS certificate date or hostname validation failed. Check the device clock and desktop URL; connection blocked."
+                }
                 loadingStatus.visibility = View.VISIBLE
                 refreshButton.isEnabled = true
             }

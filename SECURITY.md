@@ -1,10 +1,31 @@
 # Security notes
 
-- The desktop app does not save the password entered into the connection dialog. SQL history is text history and can contain sensitive literals, so disable history in the source if that risk matters.
-- The Android companion is disabled by default. It binds to local network interfaces only after explicit confirmation and uses a temporary pairing code, short-lived session tokens, rate-limited pairing attempts, host/origin checks, and 30-minute idle expiry.
-- The companion currently uses plain HTTP. Pairing codes, SQL statements, query results, and database credentials transit the local network without application-layer encryption. Use only a trusted private LAN, never public Wi-Fi, and do not port-forward or expose the service to the internet. Use a trusted VPN/private tunnel for remote access.
-- The server rejects unexpected Host headers and mismatched Host ports, checks browser origins on POST requests, limits JSON request bodies, and returns HTTP 413 when a request exceeds the body limit. Keep the desktop companion disabled when not in use.
-- The companion intentionally accepts arbitrary SQL for an authenticated session. Pairing grants database privileges of the MySQL account entered on the phone. Prefer a dedicated least-privilege MySQL account.
-- Stop the companion from the desktop when done. Stopping closes mobile MySQL sessions and removes temporary result files.
-- Release publication is gated on configured signing material. Android release APKs are signed with the project keystore and verified by `apksigner`. Windows executables and the installer are signed and verified with SignTool using a trusted code-signing certificate. See `SIGNING.md`.
-- A valid Windows signature identifies the signer and protects file integrity but does not guarantee that SmartScreen will show no warning on first download; Microsoft also uses publisher and file reputation. A self-signed Windows certificate is not equivalent to a publicly trusted publisher certificate.
+## Credentials and SQL history
+
+- The desktop and mobile apps do not persist the MySQL password entered in the connection dialog. Connection preferences contain host, port, user, database, TLS choice and optional CA path only.
+- Desktop SQL history is memory-only by default. To explicitly opt into disk persistence, set `MYSQLIDLE_SAVE_HISTORY=1` in the environment before launching MySQL IDLE. Upgrading from a version that stored SQL history scrubs the saved history on the next launch when the option is disabled.
+- Mobile query history is held in page memory only and is cleared on disconnect or session expiry.
+- Prefer a dedicated MySQL account with only the permissions needed for the work. The application intentionally executes arbitrary SQL for authenticated sessions; pairing does not reduce database privileges.
+
+## Mobile companion network security
+
+- The mobile companion is disabled unless the user explicitly starts it. It binds to one selected private IPv4 interface and refuses wildcard/public addresses.
+- The service uses HTTPS with a short-lived self-signed TLS certificate. Before connecting, the user must compare the complete SHA-256 certificate fingerprint displayed on the desktop with the fingerprint entered on the Android app. Android only proceeds through the self-signed trust error when the presented certificate fingerprint matches exactly; hostname and certificate-date errors remain blocking errors. The fingerprint changes when the desktop companion restarts, so it must be verified again for the new session.
+- The Android app rejects non-private hosts and outbound navigation to origins other than the verified desktop endpoint. Cleartext HTTP is disabled by the Android manifest.
+- The companion has temporary pairing codes, constant-time code comparison, rate-limited pairing attempts, ephemeral bearer tokens, session limits, a 30-minute idle expiry, Host/Origin checks, JSON-only POST requests, a 512 KiB request-body limit, a bounded request-worker pool and a 512 MiB result export limit.
+- Stop the companion when it is not needed. Do not expose it with router port forwarding or on public Wi-Fi; use a trusted VPN/private tunnel for remote access. TLS certificate pinning secures the desktop-to-phone HTTP service connection, but it does not make an untrusted network or compromised desktop safe.
+
+## MySQL transport security
+
+- Windows and Android connection flows require verified TLS to MySQL by default. Enable verification and provide the MySQL CA certificate path when the database uses a private certificate authority.
+- Unchecking the TLS verification option is an explicit compatibility fallback for legacy database servers. It weakens protection against network interception and should not be the default.
+- The mobile CA path is resolved on the desktop computer, since the desktop process makes the actual MySQL connection.
+
+## Files, packaging and releases
+
+- Query results are streamed to temporary CSV files instead of being retained entirely in memory; the mobile service stops exports above its configured size limit. The application attempts to remove temporary result files when sessions close or the application stops.
+- CI tests cover SQL parsing, configuration privacy, result streaming, TLS connection-option wiring, mobile HTTPS headers, certificate fingerprints, Host/Origin validation, oversized request bodies and result-export limits.
+- Android release APKs are signed and verified with `apksigner`. The recovery signing identity has an encrypted keystore backup artifact in GitHub Actions; download and securely retain that artifact and its password before its 90-day retention window expires. A new signing identity cannot update an app signed with a different certificate.
+- Windows executables and installers are not code-signed unless a trusted Windows code-signing certificate is configured. Unsigned binaries can trigger Windows SmartScreen warnings. A successful build or valid Android APK signature is not a guarantee that all software vulnerabilities have been eliminated.
+
+Report a suspected vulnerability privately to the repository owner rather than publishing exploit details in a public issue.

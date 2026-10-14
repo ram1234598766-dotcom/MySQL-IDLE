@@ -23,9 +23,10 @@ For a single-file executable instead, use:
 Notes
 -----
 * No password is stored in this file. You type it in the Connect dialog.
-* Host / port / user / database and a bounded command history are remembered in
-  the per-user settings file (%LOCALAPPDATA%\\MySQL IDLE\\settings.json on Windows).
-  The password is never saved. Set SAVE_HISTORY = False to disable history persistence.
+* Host / port / user / database are remembered in the per-user settings file.
+  SQL command history remains in memory by default and is not persisted. Set
+  MYSQLIDLE_SAVE_HISTORY=1 before launch to opt into SQL history persistence.
+  Passwords are never saved.
 * SQL runs on a dedicated worker thread so the window remains responsive.
 * Query results are streamed in batches to a temporary CSV file; only a small
   preview is retained in RAM. Temporary result files are removed on normal exit.
@@ -95,7 +96,8 @@ APP_DATA_DIR = get_app_data_dir()
 LOG_DIR = APP_DATA_DIR / "logs"
 CONFIG_PATH = APP_DATA_DIR / "settings.json"
 LEGACY_CONFIG_PATH = Path.home() / ".mysql_idle.json"
-SAVE_HISTORY = True
+# SQL text can contain literals or tokens. Disk persistence is opt-in.
+SAVE_HISTORY = os.environ.get("MYSQLIDLE_SAVE_HISTORY", "").strip().lower() in {"1", "true", "yes"}
 MAX_HISTORY = 200
 MAX_SHELL_LINES = 20000
 FETCH_BATCH_SIZE = 512
@@ -287,7 +289,10 @@ def load_config():
                 last.pop("password", None)
             else:
                 data.pop("last_connection", None)
-            if not isinstance(data.get("history"), list):
+            had_persisted_history = "history" in data
+            if not SAVE_HISTORY:
+                data.pop("history", None)
+            elif not isinstance(data.get("history"), list):
                 data["history"] = []
             else:
                 data["history"] = [item for item in data["history"] if isinstance(item, str)][-MAX_HISTORY:]
@@ -298,6 +303,9 @@ def load_config():
                         candidate.unlink()
                     except OSError:
                         logging.warning("Migrated settings, but could not remove legacy settings file %s", candidate)
+            elif had_persisted_history and not SAVE_HISTORY:
+                # Scrub previously persisted SQL text on first launch after this privacy default.
+                save_config(data)
             return data
         except (OSError, ValueError, TypeError):
             logging.exception("Could not read settings from %s", candidate)
@@ -313,7 +321,9 @@ def save_config(cfg):
         last.pop("password", None)
         safe_cfg["last_connection"] = last
     history = safe_cfg.get("history")
-    if history is None:
+    if not SAVE_HISTORY:
+        safe_cfg.pop("history", None)
+    elif history is None:
         safe_cfg.pop("history", None)
     elif isinstance(history, list):
         safe_cfg["history"] = [item for item in history if isinstance(item, str)][-MAX_HISTORY:]
@@ -419,6 +429,7 @@ class ConnectDialog(tk.Toplevel):
         ("User", "user", False),
         ("Password", "password", True),
         ("Database (optional)", "database", False),
+        ("MySQL CA certificate (optional)", "ssl_ca", False),
     ]
 
     def __init__(self, parent, defaults):
@@ -449,9 +460,31 @@ class ConnectDialog(tk.Toplevel):
                         show="" if v.get() else "*"
                     ),
                 ).grid(row=row, column=2, sticky="w", padx=(8, 0), pady=4)
+            elif key == "ssl_ca":
+                ttk.Button(
+                    self,
+                    text="Browse…",
+                    command=lambda v=var: self._browse_ca(v),
+                ).grid(row=row, column=2, sticky="w", padx=(8, 0), pady=4)
+
+        self.tls_verify = tk.BooleanVar(value=bool(defaults.get("tls_verify", True)))
+        ttk.Checkbutton(
+            self,
+            text="Require verified TLS to MySQL (recommended)",
+            variable=self.tls_verify,
+        ).grid(row=len(self.FIELDS), column=0, columnspan=3, sticky="w", pady=(8, 2))
+        tk.Label(
+            self,
+            text="Turning this off allows unverified MySQL TLS and can expose database traffic to interception.",
+            bg="white",
+            fg="#9A3412",
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=390,
+        ).grid(row=len(self.FIELDS) + 1, column=0, columnspan=3, sticky="w", pady=(0, 2))
 
         buttons = tk.Frame(self, bg="white")
-        buttons.grid(row=len(self.FIELDS), column=0, columnspan=2, sticky="e", pady=(12, 0))
+        buttons.grid(row=len(self.FIELDS) + 2, column=0, columnspan=3, sticky="e", pady=(12, 0))
         ttk.Button(buttons, text="Connect", command=self.on_ok).pack(side=tk.RIGHT)
         ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, padx=8)
 
@@ -467,8 +500,18 @@ class ConnectDialog(tk.Toplevel):
         self.grab_set()
         parent.wait_window(self)
 
+    def _browse_ca(self, variable):
+        selected = filedialog.askopenfilename(
+            parent=self,
+            title="Select MySQL CA certificate",
+            filetypes=[("PEM certificates", "*.pem *.crt *.cer"), ("All files", "*.*")],
+        )
+        if selected:
+            variable.set(selected)
+
     def on_ok(self):
         values = {k: (v.get() if k == "password" else v.get().strip()) for k, v in self.vars.items()}
+        values["tls_verify"] = bool(self.tls_verify.get())
         values["host"] = values["host"] or "localhost"
         try:
             values["port"] = int(values["port"] or 3306)
@@ -560,13 +603,23 @@ class DatabaseWorker(threading.Thread):
         password = params.get("password") or ""
         database = params.get("database") or None
         autocommit = bool(params.get("autocommit", True))
+        ssl_ca = str(params.get("ssl_ca") or "").strip()
+        tls_verify = bool(params.get("tls_verify", True))
+        if ssl_ca and not os.path.isfile(ssl_ca):
+            self.output("MySQL CA certificate file was not found.\n", "error")
+            return
+        connection_options = {
+            "host": host, "port": port, "user": user, "password": password,
+            "database": database, "charset": "utf8mb4", "autocommit": autocommit,
+            "connect_timeout": 10, "read_timeout": 60, "write_timeout": 10,
+        }
+        if tls_verify:
+            connection_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
+        if ssl_ca:
+            connection_options["ssl_ca"] = ssl_ca
         self.output(f"Connecting to {user}@{host}:{port} ...\n", "info")
         try:
-            new_conn = pymysql.connect(
-                host=host, port=port, user=user, password=password,
-                database=database, charset="utf8mb4", autocommit=autocommit,
-                connect_timeout=10, read_timeout=60, write_timeout=10,
-            )
+            new_conn = pymysql.connect(**connection_options)
         except Exception as exc:
             self.output(fmt_error(exc) + "\n", "error")
             return
@@ -580,8 +633,12 @@ class DatabaseWorker(threading.Thread):
                 pass
         self._credentials = {
             "host": host, "port": port, "user": user, "password": password,
+            "ssl_ca": ssl_ca, "tls_verify": tls_verify,
         }
-        self.conn_info = {"host": host, "port": port, "user": user, "database": database or ""}
+        self.conn_info = {
+            "host": host, "port": port, "user": user, "database": database or "",
+            "ssl_ca": ssl_ca, "tls_verify": tls_verify,
+        }
         self.current_db = database
         self.identifiers = set()
         self._emit_connection_state()
@@ -823,12 +880,17 @@ class DatabaseWorker(threading.Thread):
                 return
             control = None
             try:
-                control = pymysql.connect(
-                    host=credentials["host"], port=credentials["port"],
-                    user=credentials["user"], password=credentials["password"],
-                    charset="utf8mb4", autocommit=True,
-                    connect_timeout=5, read_timeout=5, write_timeout=5,
-                )
+                control_options = {
+                    "host": credentials["host"], "port": credentials["port"],
+                    "user": credentials["user"], "password": credentials["password"],
+                    "charset": "utf8mb4", "autocommit": True,
+                    "connect_timeout": 5, "read_timeout": 5, "write_timeout": 5,
+                }
+                if credentials.get("tls_verify", True):
+                    control_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
+                if credentials.get("ssl_ca"):
+                    control_options["ssl_ca"] = credentials["ssl_ca"]
+                control = pymysql.connect(**control_options)
                 with control.cursor() as cur:
                     cur.execute(f"KILL QUERY {int(thread_id)}")
                 if not silent:
@@ -879,7 +941,8 @@ class MySQLIDLE:
         self.mobile_server = None
         self._mobile_stopping = False
 
-        self.history = list(self.cfg.get("history", []))[-MAX_HISTORY:] if SAVE_HISTORY else []
+        # Previous sessions load history only when the explicit disk-persistence opt-in was enabled.
+        self.history = list(self.cfg.get("history", []))[-MAX_HISTORY:]
         self.hist_idx = len(self.history)
         self.draft = ""
 
@@ -1388,6 +1451,8 @@ class MySQLIDLE:
                             "port": info.get("port", 3306),
                             "user": info.get("user", ""),
                             "database": info.get("database", "") or "",
+                            "ssl_ca": info.get("ssl_ca", "") or "",
+                            "tls_verify": bool(info.get("tls_verify", True)),
                         }
                         signature = tuple(saved.items())
                         if signature != self._persisted_connection:
@@ -1410,17 +1475,21 @@ class MySQLIDLE:
     # ------------------------------------------------------------ connection --
 
     def connect_dialog(self):
-        defaults = {"host": "localhost", "port": "3306", "user": "root", "password": "", "database": ""}
+        defaults = {
+            "host": "localhost", "port": "3306", "user": "root", "password": "",
+            "database": "", "ssl_ca": "", "tls_verify": True,
+        }
         defaults.update(self.cfg.get("last_connection", {}))
         dialog = ConnectDialog(self.root, defaults)
         if dialog.result:
             self.connect(**dialog.result)
         self.text.focus_set()
 
-    def connect(self, host, port, user, password, database):
+    def connect(self, host, port, user, password, database, ssl_ca="", tls_verify=True):
         self._queue_job("connect", {
             "host": host, "port": port, "user": user, "password": password,
-            "database": database, "autocommit": self.autocommit.get(),
+            "database": database, "ssl_ca": ssl_ca, "tls_verify": bool(tls_verify),
+            "autocommit": self.autocommit.get(),
         })
 
     def disconnect(self):
@@ -1524,21 +1593,27 @@ class MySQLIDLE:
             return
         win = tk.Toplevel(self.root, bg="white", padx=16, pady=14)
         win.title("Android / Mobile Companion")
-        win.geometry("600x330")
-        win.minsize(500, 300)
+        win.geometry("680x510")
+        win.minsize(560, 450)
         win.transient(self.root)
-        tk.Label(win, text="Open this address on your Android phone", bg="white", anchor="w", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(0, 5))
-        tk.Label(win, text="Connect both devices to the same trusted Wi-Fi network first.", bg="white", fg="#555555", anchor="w", wraplength=560, justify=tk.LEFT).pack(fill=tk.X, pady=(0, 6))
+        tk.Label(win, text="Verify this desktop in the MySQL IDLE Android app", bg="white", anchor="w", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(0, 5))
+        tk.Label(win, text="Keep both devices on the same trusted private Wi-Fi network. Do not port-forward this service.", bg="white", fg="#555555", anchor="w", wraplength=640, justify=tk.LEFT).pack(fill=tk.X, pady=(0, 6))
         url_var = tk.StringVar(value=server.url)
         url_entry = ttk.Entry(win, textvariable=url_var, state="readonly")
         url_entry.pack(fill=tk.X, pady=(0, 6))
-        tk.Button(win, text="Copy address", command=lambda: self._copy_text(server.url, win)).pack(anchor="e")
-        tk.Label(win, text="Temporary pairing code (keep private)", bg="white", anchor="w", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(12, 5))
+        ttk.Button(win, text="Copy HTTPS address", command=lambda: self._copy_text(server.url, win)).pack(anchor="e")
+        tk.Label(win, text="TLS certificate SHA-256 fingerprint (compare every pair)", bg="white", anchor="w", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(8, 5))
+        fingerprint_entry = ttk.Entry(win, font=("Consolas", 9))
+        fingerprint_entry.insert(0, server.certificate_fingerprint)
+        fingerprint_entry.configure(state="readonly")
+        fingerprint_entry.pack(fill=tk.X, pady=(0, 6))
+        ttk.Button(win, text="Copy certificate fingerprint", command=lambda: self._copy_text(server.certificate_fingerprint, win)).pack(anchor="e")
+        tk.Label(win, text="Temporary pairing code (keep private)", bg="white", anchor="w", font=("Segoe UI", 10, "bold")).pack(fill=tk.X, pady=(8, 5))
         code_var = tk.StringVar(value=server.pairing_code)
         code_entry = ttk.Entry(win, textvariable=code_var, state="readonly", font=("Consolas", 11))
         code_entry.pack(fill=tk.X, pady=(0, 6))
-        tk.Button(win, text="Copy pairing code", command=lambda: self._copy_text(server.pairing_code, win)).pack(anchor="e")
-        tk.Label(win, text="On Android: open the address in Chrome, enter the code, then enter MySQL connection details. If Windows Firewall asks, allow access on private networks only. Stop the companion when finished. HTTP traffic is not encrypted.", bg="white", fg="#8a3636", wraplength=560, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(12, 8))
+        ttk.Button(win, text="Copy pairing code", command=lambda: self._copy_text(server.pairing_code, win)).pack(anchor="e")
+        tk.Label(win, text="On Android: enter this HTTPS address, compare the certificate fingerprint, then enter the pairing code. Verified TLS protects traffic to the companion. For MySQL connections, leave verified TLS enabled and supply your server CA certificate if needed. Allow Windows Firewall access on private networks only. Stop the companion when finished.", bg="white", fg="#8a3636", wraplength=640, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(12, 8))
         buttons = tk.Frame(win, bg="white")
         buttons.pack(fill=tk.X, side=tk.BOTTOM)
         ttk.Button(buttons, text="Stop Companion", command=lambda: (self.stop_mobile_companion(), win.destroy())).pack(side=tk.RIGHT)
