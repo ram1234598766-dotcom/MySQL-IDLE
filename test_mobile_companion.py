@@ -151,7 +151,11 @@ class MobileCompanionHTTPTests(unittest.TestCase):
 
     def test_large_query_preview_is_bounded_and_full_csv_is_exportable(self):
         original_connect = mobile_companion.pymysql.connect
-        mobile_companion.pymysql.connect = lambda **kwargs: FakeConnection()
+        captured = {}
+        def fake_connect(**kwargs):
+            captured.update(kwargs)
+            return FakeConnection()
+        mobile_companion.pymysql.connect = fake_connect
         token = self.pair()
         try:
             status, connected = self.request_json("/api/connect", {
@@ -160,6 +164,8 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             }, token=token)
             self.assertEqual(status, 200)
             self.assertTrue(connected["ok"])
+            self.assertTrue(captured["ssl_verify_cert"], "MySQL TLS verification must be enabled by default")
+            self.assertTrue(captured["ssl_verify_identity"], "MySQL host identity must be verified by default")
 
             status, result = self.request_json("/api/query", {"sql": "SELECT synthetic"}, token=token)
             self.assertEqual(status, 200)
