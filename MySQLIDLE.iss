@@ -50,10 +50,8 @@ Name: "{autodesktop}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; Tasks: desk
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch MySQL IDLE"; Flags: nowait postinstall skipifsilent
 
 
-; Remove files created or left inside the application installation directory.
-; User settings/logs live outside {app} and are handled by an explicit opt-in prompt.
-[UninstallDelete]
-Type: filesandordirs; Name: "{app}"
+ ; Inno Setup removes files recorded by [Files] and shortcuts recorded by [Icons].
+; User settings/logs are outside {app} and are handled by an explicit opt-in prompt.
 
 [Code]
 var
