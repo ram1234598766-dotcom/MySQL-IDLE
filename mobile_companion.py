@@ -194,33 +194,39 @@ class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
 
     def __init__(self, server_address, request_handler):
         self._request_slots = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
+        self.tls_context = None
         super().__init__(server_address, request_handler)
 
     def process_request(self, request, client_address):
+        # Acquire capacity before TLS negotiation. Over-capacity clients are
+        # closed immediately so handshakes cannot accumulate on the accept loop.
         if not self._request_slots.acquire(blocking=False):
-            body = b"Service busy. Try again shortly."
-            response = (
-                b"HTTP/1.1 503 Service Unavailable\r\n"
-                b"Connection: close\r\n"
-                b"Content-Type: text/plain; charset=utf-8\r\n"
-                + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
-                + body
+            self.shutdown_request(request)
+            return
+        secure_request = None
+        try:
+            if self.tls_context is None:
+                raise RuntimeError("TLS context is not configured.")
+            secure_request = self.tls_context.wrap_socket(
+                request, server_side=True, do_handshake_on_connect=False
             )
+            secure_request.settimeout(15)
+            super().process_request(secure_request, client_address)
+        except Exception:
             try:
-                request.sendall(response)
+                self.shutdown_request(secure_request or request)
             except OSError:
                 pass
-            finally:
-                self.shutdown_request(request)
-            return
-        try:
-            super().process_request(request, client_address)
-        except Exception:
             self._request_slots.release()
             raise
 
     def process_request_thread(self, request, client_address):
         try:
+            try:
+                request.do_handshake()
+            except (ssl.SSLError, OSError):
+                self.shutdown_request(request)
+                return
             super().process_request_thread(request, client_address)
         finally:
             self._request_slots.release()
@@ -692,7 +698,7 @@ class MobileCompanionServer:
         tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
         tls_context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
-        self.httpd.socket = tls_context.wrap_socket(self.httpd.socket, server_side=True)
+        self.httpd.tls_context = tls_context
         self.port = self.httpd.server_address[1]
         self.url = f"https://{self.bind_host}:{self.port}/"
         self.allowed_hosts = {"localhost", "127.0.0.1", self.bind_host.lower()}
