@@ -14,8 +14,6 @@
     </linearGradient>
   </defs>
   <rect x="5" y="5" width="118" height="118" rx="28" fill="url(#tile)" stroke="#5797BB" stroke-opacity=".75" stroke-width="1.5"/>
-  <path d="M18 35 A47 47 0 0 1 107 28" fill="none" stroke="#6FB CDB" stroke-opacity="0"/>
-  <path d="M18 36 A48 48 0 0 1 111 38" fill="none" stroke="#6FB CDB" stroke-opacity="0"/>
   <g>
     <ellipse cx="58" cy="94" rx="29" ry="6" fill="#020811" opacity=".56"/>
     <path d="M24 45 C24 37 69 37 69 45 L69 89 C69 98 24 98 24 89 Z" fill="url(#database)"/>
