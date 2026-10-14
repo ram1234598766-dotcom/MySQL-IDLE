@@ -242,7 +242,8 @@ class ConnectionSecurityTests(unittest.TestCase):
                 "user": "tester",
                 "password": "test-password",
                 "database": None,
-                "ssl_ca": "",
+                # A stale optional CA path must not block the default mode.
+                "ssl_ca": "/path/that/does/not/exist/mysql-ca.pem",
                 "autocommit": True,
             })
         self.assertNotIn("ssl_verify_cert", captured)
