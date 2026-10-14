@@ -492,20 +492,27 @@ jobs:
           [[ "$ANDROID_KEYSTORE_PASSWORD_SET" == "true" ]] || missing+=("ANDROID_KEYSTORE_PASSWORD")
           [[ "$ANDROID_KEY_ALIAS_SET" == "true" ]] || missing+=("ANDROID_KEY_ALIAS")
           [[ "$ANDROID_KEY_PASSWORD_SET" == "true" ]] || missing+=("ANDROID_KEY_PASSWORD")
-          if [[ "$WINDOWS_SIGNING_ENABLED" == "true" && "$WINDOWS_BUILD_SUCCESS" == "true" ]]; then
+          if [[ "$WINDOWS_BUILD_SUCCESS" == "true" ]]; then
             echo "windows_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "windows_ready=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$WINDOWS_SIGNING_ENABLED" == "true" && "$WINDOWS_BUILD_SUCCESS" == "true" ]]; then
+            echo "windows_signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "windows_signed=false" >> "$GITHUB_OUTPUT"
           fi
 
           if [[ "$ANDROID_SIGNING_ENABLED" == "true" ]]; then
             {
               echo "## Release signing"
               echo "- Android release APK is configured for signing and will be verified."
-              if [[ "$WINDOWS_SIGNING_ENABLED" == "true" && "$WINDOWS_BUILD_SUCCESS" == "true" ]]; then
-                echo "- Windows signing is configured and verified; signed Windows assets will be included."
+              if [[ "$WINDOWS_BUILD_SUCCESS" == "true" && "$WINDOWS_SIGNING_ENABLED" == "true" ]]; then
+                echo "- Windows EXE, installer, and folder archive will be included; Authenticode signing is configured and verified."
+              elif [[ "$WINDOWS_BUILD_SUCCESS" == "true" ]]; then
+                echo "- Windows EXE, installer, and folder archive will be included, but they are NOT Authenticode-signed. A signing-status notice will be attached."
               else
-                echo "- Windows signing is on hold or the Windows build did not succeed; Windows files will be excluded from this release."
+                echo "- The Windows build did not succeed; Windows files will be excluded from this release."
               fi
             } >> "$GITHUB_STEP_SUMMARY"
           else
@@ -528,26 +535,52 @@ jobs:
         with:
           name: MySQLIDLE-Android
           path: release-assets
-      - name: Download signed Windows artifacts
+      - name: Download Windows build artifacts
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
         uses: actions/download-artifact@v8
         with:
           name: MySQLIDLE-Windows
           path: release-assets
+      - name: Create Windows signing-status notice
+        if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
+        shell: bash
+        env:
+          WINDOWS_SIGNED: \${{ steps.signing.outputs.windows_signed }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          if [[ "$WINDOWS_SIGNED" == "true" ]]; then
+            printf '%s\n' "Windows EXE and installer: Authenticode signatures were applied and verified by CI." > release-assets/WINDOWS-SIGNING-STATUS.txt
+          else
+            printf '%s\n' \
+              "WARNING: The Windows EXE and installer in this release are NOT Authenticode-signed." \
+              "Windows may display SmartScreen or unknown-publisher warnings." \
+              "Only download from this official repository and verify SHA256SUMS." \
+              "A trusted Windows code-signing certificate was not configured for this build." \
+              > release-assets/WINDOWS-SIGNING-STATUS.txt
+          fi
       - name: Validate release bundle and generate checksums
         if: steps.signing.outputs.ready == 'true'
         shell: bash
+        env:
+          WINDOWS_BUILD_READY: \${{ steps.signing.outputs.windows_ready }}
         run: |
           set -euo pipefail
           test -s "release-assets/MySQLIDLE-Mobile-release.apk"
           cd release-assets
-          assets=(MySQLIDLE-Mobile-release.apk MySQLIDLE_Portable.exe MySQLIDLE-Folder.zip MySQLIDLE-Setup.exe)
+          if [[ "$WINDOWS_BUILD_READY" == "true" ]]; then
+            test -s "MySQLIDLE_Portable.exe"
+            test -s "MySQLIDLE-Folder.zip"
+            test -s "MySQLIDLE-Setup.exe"
+            test -s "WINDOWS-SIGNING-STATUS.txt"
+          fi
+          assets=(MySQLIDLE-Mobile-release.apk MySQLIDLE_Portable.exe MySQLIDLE-Folder.zip MySQLIDLE-Setup.exe WINDOWS-SIGNING-STATUS.txt)
           included=()
-          for asset in "${assets[@]}"; do
+          for asset in "\${assets[@]}"; do
             [[ -s "$asset" ]] && included+=("$asset")
           done
-          sha256sum "${included[@]}" > SHA256SUMS
-          echo "SHA-256 checksums generated for: ${included[*]}" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "\${included[@]}" > SHA256SUMS
+          echo "SHA-256 checksums generated for: \${included[*]}" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish Android-only release
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready != 'true'
         uses: softprops/action-gh-release@v3
@@ -560,7 +593,7 @@ jobs:
           files: |
             release-assets/MySQLIDLE-Mobile-release.apk
             release-assets/SHA256SUMS
-      - name: Publish Android and signed Windows release assets
+      - name: Publish Android and Windows release assets
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
         uses: softprops/action-gh-release@v3
         with:
@@ -574,4 +607,5 @@ jobs:
             release-assets/MySQLIDLE_Portable.exe
             release-assets/MySQLIDLE-Folder.zip
             release-assets/MySQLIDLE-Setup.exe
+            release-assets/WINDOWS-SIGNING-STATUS.txt
             release-assets/SHA256SUMS
