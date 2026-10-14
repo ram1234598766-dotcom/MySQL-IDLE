@@ -758,6 +758,11 @@ class MobileCompanionServer:
                     if session.conn is None:
                         self._json(400, {"ok": False, "error": "Connect to MySQL first."})
                         return
+                    if action == "commit" and owner.governor.read_only:
+                        message = "Read-only policy blocks COMMIT because it could persist pending changes. Roll back, or disable read-only mode if this commit is intentional."
+                        owner.governor.record_decision("COMMIT", "block", message, "transaction", "high")
+                        self._json(403, {"ok": False, "error": message, "governance_blocked": True})
+                        return
                     try:
                         getattr(session.conn, action)()
                         self._json(200, {"ok": True, "message": action.capitalize() + " completed."})
