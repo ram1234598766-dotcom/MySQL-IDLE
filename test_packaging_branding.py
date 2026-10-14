@@ -52,9 +52,9 @@ class PackagingBrandingTests(unittest.TestCase):
     def test_installer_creates_desktop_shortcut_with_explicit_shared_icon(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         self.assertIn("WizardStyle=modern dynamic polar includetitlebar", source)
-        self.assertIn('UninstallDisplayIcon={app}\\assets\\mysqlidle.ico', source)
+        self.assertIn('UninstallDisplayIcon={app}\\_internal\\assets\\mysqlidle.ico', source)
         self.assertIn('Name: "{autodesktop}\\MySQL IDLE"', source)
-        self.assertIn('IconFilename: "{app}\\assets\\mysqlidle.ico"; IconIndex: 0', source)
+        self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
         self.assertNotIn("Tasks: desktopicon", source)
 
     def test_shared_icon_uses_database_and_sql_prompt_visuals(self):
