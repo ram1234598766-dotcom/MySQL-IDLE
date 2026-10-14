@@ -1,1 +1,2 @@
 CI run 13: clean release assets only (portable EXE, folder ZIP and APK).
+CI run: verify Android release signing and branded Windows/Android packages after secret update; keep Windows signing on hold.
