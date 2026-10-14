@@ -18,6 +18,7 @@ import android.net.http.SslError
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
@@ -170,23 +171,47 @@ class MainActivity : Activity() {
         }
         root = page
 
+        val browser = WebView(this)
+        web = browser
+
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(4), dp(8), dp(4))
             setBackgroundColor(Color.WHITE)
         }
+        toolbar.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_mysqlidle_brandmark)
+            contentDescription = "MySQL IDLE logo"
+        }, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+            marginEnd = dp(6)
+        })
         toolbar.addView(button("Server", onClick = { showConnectScreen() }),
-            LinearLayout.LayoutParams(dp(92), dp(46)))
+            LinearLayout.LayoutParams(dp(78), dp(46)))
         toolbar.addView(label(uri.host ?: uri.toString(), 13f, muted).apply {
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(dp(10), 0, 0, 0)
+            setPadding(dp(8), 0, dp(4), 0)
         }, LinearLayout.LayoutParams(0, -2, 1f))
+        val refreshButton = button("Refresh") { browser.reload() }.apply {
+            contentDescription = "Refresh desktop companion"
+        }
+        toolbar.addView(refreshButton, LinearLayout.LayoutParams(dp(82), dp(46)))
         page.addView(toolbar)
 
-        val browser = WebView(this)
-        web = browser
+        val loadingBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            visibility = View.VISIBLE
+            progressTintList = android.content.res.ColorStateList.valueOf(blue)
+            contentDescription = "Page loading progress"
+        }
+        page.addView(loadingBar, LinearLayout.LayoutParams(-1, dp(3)))
+        val loadingStatus = label("Connecting to desktop companion…", 12f, muted).apply {
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+        }
+        page.addView(loadingStatus, LinearLayout.LayoutParams(-1, -2))
+
         browser.setBackgroundColor(Color.WHITE)
         browser.settings.javaScriptEnabled = true
         browser.settings.domStorageEnabled = true
@@ -195,8 +220,37 @@ class MainActivity : Activity() {
         browser.settings.javaScriptCanOpenWindowsAutomatically = false
         browser.settings.setSupportMultipleWindows(false)
         browser.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        browser.webChromeClient = WebChromeClient()
+        var pageLoadFailed = false
+        browser.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView, newProgress: Int) {
+                loadingBar.progress = newProgress
+                if (!pageLoadFailed && newProgress < 100) {
+                    loadingBar.visibility = View.VISIBLE
+                    loadingStatus.visibility = View.VISIBLE
+                    loadingStatus.text = "Loading desktop companion… $newProgress%"
+                } else if (!pageLoadFailed) {
+                    loadingBar.visibility = View.GONE
+                    loadingStatus.visibility = View.GONE
+                }
+            }
+        }
         browser.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                pageLoadFailed = false
+                loadingBar.progress = 0
+                loadingBar.visibility = View.VISIBLE
+                loadingStatus.text = "Connecting to desktop companion…"
+                loadingStatus.visibility = View.VISIBLE
+                refreshButton.isEnabled = false
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                refreshButton.isEnabled = true
+                if (!pageLoadFailed) {
+                    loadingBar.visibility = View.GONE
+                    loadingStatus.visibility = View.GONE
+                }
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val target = request.url
                 val base = baseUri
@@ -215,7 +269,11 @@ class MainActivity : Activity() {
 
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                 handler.cancel()
-                Toast.makeText(this@MainActivity, "Secure connection failed certificate checks.", Toast.LENGTH_LONG).show()
+                pageLoadFailed = true
+                loadingBar.visibility = View.GONE
+                loadingStatus.text = "Secure connection failed certificate checks. Verify the URL and certificate, then refresh."
+                loadingStatus.visibility = View.VISIBLE
+                refreshButton.isEnabled = true
             }
 
             override fun onReceivedError(
@@ -224,9 +282,11 @@ class MainActivity : Activity() {
                 error: android.webkit.WebResourceError
             ) {
                 if (request.isForMainFrame) {
-                    Toast.makeText(this@MainActivity,
-                        "Could not reach desktop companion. Check Wi-Fi, URL and firewall.",
-                        Toast.LENGTH_LONG).show()
+                    pageLoadFailed = true
+                    loadingBar.visibility = View.GONE
+                    loadingStatus.text = "Could not reach the desktop companion. Check Wi-Fi, address and firewall, then tap Refresh."
+                    loadingStatus.visibility = View.VISIBLE
+                    refreshButton.isEnabled = true
                 }
             }
         }
