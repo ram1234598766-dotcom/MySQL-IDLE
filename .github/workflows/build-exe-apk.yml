@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mysqlidle-${{ github.workflow }}-${{ github.ref }}
+  group: mysqlidle-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -63,6 +63,7 @@ jobs:
   build-windows:
     name: Build Windows EXE and installer
     runs-on: windows-latest
+    timeout-minutes: 20
     env:
       WINDOWS_SIGNING_ENABLED: ${{ github.event_name != 'pull_request' && secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
     steps:
@@ -273,6 +274,7 @@ jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: read
