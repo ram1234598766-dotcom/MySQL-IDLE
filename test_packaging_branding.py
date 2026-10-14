@@ -36,6 +36,9 @@ class PackagingBrandingTests(unittest.TestCase):
             "[Files]",
             "recursesubdirs createallsubdirs",
             "CurUninstallStepChanged",
+            "InitializeUninstallProgressForm",
+            "npbstMarquee",
+            "UninstallSilent",
             "local settings, SQL history",
             "MB_YESNO or MB_DEFBUTTON2",
             "DelTree(DataDir, True, True, True)",
@@ -43,6 +46,7 @@ class PackagingBrandingTests(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertIn(expected, source)
         self.assertNotIn('[UninstallDelete]\nType: filesandordirs; Name: "{app}"', source)
+        self.assertNotIn("WizardSilent", source)
 
     def test_android_launcher_and_splash_reference_product_branding(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
