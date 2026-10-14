@@ -1,7 +1,7 @@
-"""Authenticated, LAN-only mobile companion for MySQL IDLE.
+"""Authenticated, LAN-only HTTPS companion for MySQL IDLE.
 
-The desktop app hosts this dependency-free HTTP service only after the user
-explicitly enables it. The pairing secret is ephemeral and never persisted.
+The desktop app starts this TLS-protected service only after the user explicitly
+enables it. The short-lived certificate and pairing secret are never persisted.
 """
 from __future__ import annotations
 
@@ -300,7 +300,7 @@ class MobileCompanionServer:
                 # Never write client IPs, pairing data, SQL, or request metadata to console.
                 return
 
-            def _headers(self, content_type="application/json; charset=utf-8", length=None):
+            def _headers(self, content_type="application/json; charset=utf-8", length=None, script_nonce=None):
                 self.send_header("Content-Type", content_type)
                 self.send_header("Cache-Control", "no-store, max-age=0")
                 self.send_header("Pragma", "no-cache")
@@ -310,13 +310,21 @@ class MobileCompanionServer:
                 self.send_header("Cross-Origin-Resource-Policy", "same-origin")
                 self.send_header("Cross-Origin-Opener-Policy", "same-origin")
                 self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), usb=()")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+                script_policy = f"'nonce-{script_nonce}'" if script_nonce else "'none'"
+                csp = (
+                    "default-src 'self'; "
+                    f"script-src {script_policy}; "
+                    "style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; "
+                    "object-src 'none'; frame-src 'none'; worker-src 'none'; "
+                    "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+                )
+                self.send_header("Content-Security-Policy", csp)
                 if length is not None:
                     self.send_header("Content-Length", str(length))
 
-            def _send_bytes(self, status, data, content_type="application/json; charset=utf-8", extra_headers=None):
+            def _send_bytes(self, status, data, content_type="application/json; charset=utf-8", extra_headers=None, script_nonce=None):
                 self.send_response(status)
-                self._headers(content_type, len(data))
+                self._headers(content_type, len(data), script_nonce=script_nonce)
                 for name, value in (extra_headers or {}).items():
                     self.send_header(name, value)
                 self.end_headers()
@@ -412,8 +420,10 @@ class MobileCompanionServer:
                     return
                 path = urlparse(self.path).path
                 if path == "/":
-                    body = MOBILE_HTML.encode("utf-8")
-                    self._send_bytes(200, body, "text/html; charset=utf-8")
+                    nonce = secrets.token_urlsafe(18)
+                    html = MOBILE_HTML.replace("<script>", f'<script nonce="{nonce}">', 1)
+                    body = html.encode("utf-8")
+                    self._send_bytes(200, body, "text/html; charset=utf-8", script_nonce=nonce)
                 elif path == "/api/state":
                     try:
                         s = self._session()
