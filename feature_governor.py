@@ -70,40 +70,79 @@ def _tokens(sql: str) -> list[str]:
             result.append(sql[i:j].upper())
             i = j
             continue
+        if ch in "();":
+            result.append(ch)
         i += 1
     return result
 
 
 def classify_sql(sql: str) -> dict[str, str | bool]:
     """Conservative, lexical risk assessment; never treats SQL text as executable code."""
-    words = _tokens(sql)
-    if not words:
+    tokens = _tokens(sql)
+    if not tokens:
         return {"category": "empty", "risk": "low", "reason": "No SQL keywords found.",
                 "mutation": False, "requires_confirmation": False}
-    word_set = set(words)
+
+    # Preserve top-level token positions so a WHERE inside a nested subquery cannot
+    # disguise an unqualified UPDATE/DELETE on the outer statement.
+    groups: list[list[str]] = []
+    current: list[str] = []
+    depth = 0
+    for token in tokens:
+        if token == ";" and depth == 0:
+            if current:
+                groups.append(current)
+            current = []
+            continue
+        current.append(token)
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+    if current:
+        groups.append(current)
+
+    word_set = {token for token in tokens if token not in {"(", ")", ";"}}
+    top_level_groups: list[set[str]] = []
+    for group in groups:
+        local_depth = 0
+        top: set[str] = set()
+        for token in group:
+            if token == "(":
+                local_depth += 1
+            elif token == ")":
+                local_depth = max(0, local_depth - 1)
+            elif local_depth == 0 and token not in {";", "(", ")"}:
+                top.add(token)
+        top_level_groups.append(top)
+
     mutation = bool(word_set & _MUTATION_WORDS)
     high_reasons: list[str] = []
-    if word_set & _DESTRUCTIVE_WORDS:
+    top_level_words = set().union(*top_level_groups) if top_level_groups else set()
+    if top_level_words & _DESTRUCTIVE_WORDS:
         high_reasons.append("DDL can irreversibly change or remove database objects.")
-    if word_set & _ADMIN_WORDS:
+    if top_level_words & _ADMIN_WORDS:
         high_reasons.append("Administrative or file-related SQL can affect server-wide state.")
-    if "OUTFILE" in word_set or "DUMPFILE" in word_set or "PERSIST" in word_set:
+    if {"OUTFILE", "DUMPFILE", "PERSIST"} & top_level_words:
         high_reasons.append("File export or persistent/global settings can expose data or alter server state.")
         mutation = True
-    if "GLOBAL" in word_set and "SET" in word_set:
+    if "GLOBAL" in top_level_words and "SET" in top_level_words:
         high_reasons.append("Global server settings affect other database users.")
         mutation = True
-    if "DELETE" in word_set and "WHERE" not in word_set:
-        high_reasons.append("DELETE without WHERE may remove every row in a table.")
-    if "UPDATE" in word_set and "WHERE" not in word_set:
-        high_reasons.append("UPDATE without WHERE may modify every row in a table.")
-    if "CREATE" in word_set and word_set.intersection({"USER", "ROLE", "PROCEDURE", "FUNCTION", "EVENT", "TRIGGER"}):
-        high_reasons.append("Creating privileged or executable database objects needs deliberate review.")
-    if "ALTER" in word_set and word_set.intersection({"USER", "ROLE"}):
-        high_reasons.append("Changing an account or role may affect database access.")
+
+    for top in top_level_groups:
+        if "DELETE" in top and "WHERE" not in top:
+            high_reasons.append("DELETE without WHERE may remove every row in a table.")
+        if "UPDATE" in top and "WHERE" not in top:
+            high_reasons.append("UPDATE without WHERE may modify every row in a table.")
+        if "CREATE" in top and top.intersection({"USER", "ROLE", "PROCEDURE", "FUNCTION", "EVENT", "TRIGGER"}):
+            high_reasons.append("Creating privileged or executable database objects needs deliberate review.")
+        if "ALTER" in top and top.intersection({"USER", "ROLE"}):
+            high_reasons.append("Changing an account or role may affect database access.")
+
     reason = " ".join(dict.fromkeys(high_reasons))
     if high_reasons:
-        category = "administrative" if word_set & _ADMIN_WORDS or ("GLOBAL" in word_set and "SET" in word_set) else "destructive"
+        category = "administrative" if top_level_words & _ADMIN_WORDS or ("GLOBAL" in top_level_words and "SET" in top_level_words) else "destructive"
         return {"category": category, "risk": "high", "reason": reason,
                 "mutation": mutation, "requires_confirmation": True}
     if mutation:
