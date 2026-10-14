@@ -620,7 +620,9 @@ class DatabaseWorker(threading.Thread):
         autocommit = bool(params.get("autocommit", True))
         ssl_ca = str(params.get("ssl_ca") or "").strip()
         tls_verify = bool(params.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY))
-        if ssl_ca and not os.path.isfile(ssl_ca):
+        # A CA file is relevant only when certificate verification is explicitly
+        # enabled. Ignore stale/optional CA paths in the default compatibility mode.
+        if tls_verify and ssl_ca and not os.path.isfile(ssl_ca):
             self.output("MySQL CA certificate file was not found.\n", "error")
             return
         connection_options = {
@@ -630,8 +632,8 @@ class DatabaseWorker(threading.Thread):
         }
         if tls_verify:
             connection_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
-        if ssl_ca:
-            connection_options["ssl_ca"] = ssl_ca
+            if ssl_ca:
+                connection_options["ssl_ca"] = ssl_ca
         self.output(f"Connecting to {user}@{host}:{port} ...\n", "info")
         try:
             new_conn = pymysql.connect(**connection_options)
