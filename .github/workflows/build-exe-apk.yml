@@ -85,8 +85,8 @@ jobs:
           @'
           import unittest
           suite = unittest.TestSuite()
-suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle'))
-suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_feature_governor'))
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle'))
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_feature_governor'))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           status = 'PASS' if result.wasSuccessful() else 'FAIL'
           print('TEST_RESULT=' + status)
