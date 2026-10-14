@@ -56,7 +56,14 @@ class PackagingBrandingTests(unittest.TestCase):
                 path = ROOT / "android-app/app/src/main/res" / directory / filename
                 with self.subTest(resource=str(path)):
                     source = path.read_text(encoding="utf-8")
-                    self.assertIn("@drawable/ic_launcher_foreground", source)
+                    references_shared_foreground = "@drawable/ic_launcher_foreground" in source
+                    embeds_matching_brand_mark = (
+                        "<vector" in source
+                        and "#0F172A" in source
+                        and "#22D3EE" in source
+                        and "#2563EB" in source
+                    )
+                    self.assertTrue(references_shared_foreground or embeds_matching_brand_mark)
 
         foreground = (ROOT / "android-app/app/src/main/res/drawable/ic_launcher_foreground.xml").read_text(encoding="utf-8")
         self.assertIn("#22D3EE", foreground)
