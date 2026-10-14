@@ -526,7 +526,15 @@ jobs:
           set -euo pipefail
           test -s "$APK_SMOKE_PATH"
           sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
-          echo "no" | avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-35;google_apis;x86_64" --device "pixel_2"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          printf "no\n" | avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-35;google_apis;x86_64"
+          if [[ ! -s "$ANDROID_AVD_HOME/mysqlidle-smoke.ini" ]]; then
+            avdmanager list avd || true
+            find "$HOME/.android" -maxdepth 3 -type f -name "*.ini" -print || true
+            echo "avdmanager did not create the expected AVD definition." >&2
+            exit 1
+          fi
           "$ANDROID_HOME/emulator/emulator" -avd mysqlidle-smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/mysqlidle-emulator.log" 2>&1 &
           emulator_pid=$!
           cleanup() {
