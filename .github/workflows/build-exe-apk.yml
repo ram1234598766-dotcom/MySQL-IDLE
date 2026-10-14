@@ -28,15 +28,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: mysqlidle-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   restore-sources:
     name: Expand source bundle into repository
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Restore source files
@@ -58,10 +64,10 @@ jobs:
     name: Build Windows EXE and installer
     runs-on: windows-latest
     env:
-      WINDOWS_SIGNING_ENABLED: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+      WINDOWS_SIGNING_ENABLED: ${{ github.event_name != 'pull_request' && secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Restore source payload when bootstrapping an empty repo
@@ -187,7 +193,7 @@ jobs:
           if (Test-Path "dist\mysql_idle") {
             Compress-Archive -Path "dist\mysql_idle\*" -DestinationPath "dist\MySQLIDLE-Folder.zip" -Force
           }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MySQLIDLE-Windows
           path: |
@@ -201,7 +207,7 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
     env:
-      ANDROID_SIGNING_ENABLED: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+      ANDROID_SIGNING_ENABLED: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Restore source payload when bootstrapping an empty repo
@@ -211,16 +217,38 @@ jobs:
           python-version: "3.12"
       - name: Run mobile HTTP integration tests
         run: python -m unittest -v test_mobile_companion.py
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v4
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "8.9"
       - name: Install Android platform and build tools
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Report Android signing readiness
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          ANDROID_SIGNING_ENABLED: ${{ env.ANDROID_SIGNING_ENABLED }}
+          ANDROID_KEYSTORE_BASE64_SET: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          ANDROID_KEYSTORE_PASSWORD_SET: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          ANDROID_KEY_ALIAS_SET: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          ANDROID_KEY_PASSWORD_SET: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          if [[ "$ANDROID_SIGNING_ENABLED" == "true" ]]; then
+            echo "Android signing configuration detected (secret values are hidden)."
+            echo "Android release signing: configured" >> "$GITHUB_STEP_SUMMARY"
+          else
+            missing=()
+            [[ "$ANDROID_KEYSTORE_BASE64_SET" == "true" ]] || missing+=("ANDROID_KEYSTORE_BASE64")
+            [[ "$ANDROID_KEYSTORE_PASSWORD_SET" == "true" ]] || missing+=("ANDROID_KEYSTORE_PASSWORD")
+            [[ "$ANDROID_KEY_ALIAS_SET" == "true" ]] || missing+=("ANDROID_KEY_ALIAS")
+            [[ "$ANDROID_KEY_PASSWORD_SET" == "true" ]] || missing+=("ANDROID_KEY_PASSWORD")
+            echo "::warning::Android release signing unavailable. Missing repository Actions secret names: ${missing[*]}"
+            echo "Android release signing: unavailable. Check repository Actions secrets; values are never printed." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Restore Android release keystore
         if: env.ANDROID_SIGNING_ENABLED == 'true'
         env:
@@ -266,6 +294,8 @@ jobs:
     if: always() && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch'))) && needs.build-android.result == 'success'
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check signing configuration
         id: signing
@@ -317,7 +347,7 @@ jobs:
           fi
       - name: Download signed Android artifact
         if: steps.signing.outputs.ready == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: MySQLIDLE-Android
           path: release-assets
@@ -343,7 +373,7 @@ jobs:
           echo "SHA-256 checksums generated for: ${included[*]}" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish Android-only release
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
           target_commitish: main
