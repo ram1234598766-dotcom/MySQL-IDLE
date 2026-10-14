@@ -1,6 +1,7 @@
 """Packaging/UI resource contracts: logos must survive into distributed builds."""
 from pathlib import Path
 import unittest
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent
 
@@ -65,6 +66,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('aria-label="MySQL IDLE database terminal app icon"', svg)
         self.assertIn("#4479A1", svg)
         self.assertIn("#F29111", svg)
+        ET.fromstring(svg)  # Reject malformed SVG before packaging artwork.
 
     def test_android_launcher_and_splash_reference_product_branding(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
