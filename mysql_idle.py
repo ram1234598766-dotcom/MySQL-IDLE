@@ -53,7 +53,7 @@ from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from feature_governor import FeatureGovernor
+from feature_governor import APPROVAL_TTL_SECONDS, FeatureGovernor
 
 try:
     import pymysql
@@ -750,17 +750,24 @@ class DatabaseWorker(threading.Thread):
 
         # Bind approvals to this queued job (not shared global state), including
         # duplicate identical statements which each require their own confirmation.
-        approved_counts = {}
-        for approved_stmt in approved_statements or ():
+        approved_expiries = {}
+        for grant in approved_statements or ():
+            try:
+                approved_stmt, expires_at = grant
+                expiry = float(expires_at)
+            except (TypeError, ValueError):
+                continue
             digest = self.governor._digest(approved_stmt)
-            approved_counts[digest] = approved_counts.get(digest, 0) + 1
+            approved_expiries.setdefault(digest, []).append(expiry)
 
         completed = 0
         for index, stmt in enumerate(statements, start=1):
             digest = self.governor._digest(stmt)
-            externally_approved = approved_counts.get(digest, 0) > 0
-            if externally_approved:
-                approved_counts[digest] -= 1
+            grants = approved_expiries.get(digest, [])
+            expires_at = grants.pop(0) if grants else 0.0
+            if not grants:
+                approved_expiries.pop(digest, None)
+            externally_approved = expires_at > time.monotonic()
             policy = self.governor.check_sql(stmt, externally_approved=externally_approved)
             if policy["decision"] != "allow":
                 self.output(
@@ -1477,7 +1484,7 @@ class MySQLIDLE:
                                                   str(policy["category"]), str(policy["risk"]))
                     self.write("High-impact SQL cancelled by Feature Governance.\n", "info")
                     return None
-                approvals.append(stmt)
+                approvals.append((stmt, time.monotonic() + APPROVAL_TTL_SECONDS))
         return approvals
 
     def show_result(self, columns, rows, row_count, elapsed):
