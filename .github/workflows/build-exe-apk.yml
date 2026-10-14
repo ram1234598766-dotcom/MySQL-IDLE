@@ -545,7 +545,7 @@ jobs:
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
         shell: bash
         env:
-          WINDOWS_SIGNED: \${{ steps.signing.outputs.windows_signed }}
+          WINDOWS_SIGNED: ${{ steps.signing.outputs.windows_signed }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
@@ -563,7 +563,7 @@ jobs:
         if: steps.signing.outputs.ready == 'true'
         shell: bash
         env:
-          WINDOWS_BUILD_READY: \${{ steps.signing.outputs.windows_ready }}
+          WINDOWS_BUILD_READY: ${{ steps.signing.outputs.windows_ready }}
         run: |
           set -euo pipefail
           test -s "release-assets/MySQLIDLE-Mobile-release.apk"
@@ -576,11 +576,11 @@ jobs:
           fi
           assets=(MySQLIDLE-Mobile-release.apk MySQLIDLE_Portable.exe MySQLIDLE-Folder.zip MySQLIDLE-Setup.exe WINDOWS-SIGNING-STATUS.txt)
           included=()
-          for asset in "\${assets[@]}"; do
+          for asset in "${assets[@]}"; do
             [[ -s "$asset" ]] && included+=("$asset")
           done
-          sha256sum "\${included[@]}" > SHA256SUMS
-          echo "SHA-256 checksums generated for: \${included[*]}" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum "${included[@]}" > SHA256SUMS
+          echo "SHA-256 checksums generated for: ${included[*]}" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish Android-only release
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready != 'true'
         uses: softprops/action-gh-release@v3
