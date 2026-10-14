@@ -87,6 +87,7 @@ jobs:
           suite = unittest.TestSuite()
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle'))
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_feature_governor'))
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_packaging_branding'))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           status = 'PASS' if result.wasSuccessful() else 'FAIL'
           print('TEST_RESULT=' + status)
@@ -106,7 +107,7 @@ jobs:
             throw 'Desktop regression tests did not pass.'
           }
       - name: Compile Python modules
-        run: python -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py
+        run: python -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py
       - name: Build one-folder desktop app
         run: python -m PyInstaller --clean --noconfirm mysql_idle.spec
       - name: Build portable single-file EXE
