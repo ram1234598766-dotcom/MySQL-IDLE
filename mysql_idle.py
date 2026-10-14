@@ -868,6 +868,16 @@ class DatabaseWorker(threading.Thread):
         )
 
     def _set_autocommit(self, enabled):
+        if enabled and self.governor.read_only:
+            message = (
+                "Feature Governance blocked enabling auto-commit in read-only mode because it can "
+                "commit pending changes. Roll back the transaction or disable read-only mode first.\n"
+            )
+            self.governor.record_decision(
+                "SET autocommit=1", "block", message.strip(), "transaction", "high"
+            )
+            self.output(message, "error")
+            return
         if self.conn is not None:
             try:
                 self.conn.autocommit(bool(enabled))
@@ -877,6 +887,11 @@ class DatabaseWorker(threading.Thread):
         self.output(f"Auto-commit is {'ON' if enabled else 'OFF'}.\n", "info")
 
     def _transaction(self, action):
+        if action == "commit" and self.governor.read_only:
+            message = "Feature Governance blocked COMMIT in read-only mode; use Rollback if changes should be discarded."
+            self.governor.record_decision("COMMIT", "block", message, "transaction", "high")
+            self.output(message + "\n", "error")
+            return
         if self.conn is None:
             self.output("Not connected.\n", "error")
             return
