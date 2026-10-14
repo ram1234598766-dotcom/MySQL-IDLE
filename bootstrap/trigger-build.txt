@@ -1,3 +1,4 @@
 CI run 13: clean release assets only (portable EXE, folder ZIP and APK).
 CI run: verify Android release signing and branded Windows/Android packages after secret update; keep Windows signing on hold.
 CI run: build and verify the release-signed Android APK using repository Actions secrets.
+CI run: validate the updated Android keystore secret in a fresh workflow run and publish the signed APK if verification passes.
