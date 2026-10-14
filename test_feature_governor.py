@@ -62,6 +62,25 @@ class SQLClassificationTests(unittest.TestCase):
         self.assertTrue(result["requires_confirmation"])
         self.assertEqual(result["risk"], "high")
 
+    def test_account_file_and_replication_operations_are_high_impact(self):
+        for sql in (
+            "SET PASSWORD FOR 'user'@'localhost' = 'example'",
+            "CHANGE MASTER TO MASTER_HOST='db.example'",
+            "RENAME TABLE users TO users_archive",
+            "SELECT LOAD_FILE('/etc/passwd')",
+        ):
+            with self.subTest(sql=sql):
+                self.assertTrue(classify_sql(sql)["requires_confirmation"])
+
+    def test_read_only_blocks_session_set_and_account_password_changes(self):
+        governor = FeatureGovernor({"read_only": True})
+        self.assertEqual(governor.check_sql("SET @sample = 1")["decision"], "block")
+        self.assertEqual(
+            governor.check_sql("SET PASSWORD FOR 'user'@'localhost' = 'example'")["decision"],
+            "block",
+        )
+
+
 
     def test_second_statement_is_classified_independently(self):
         result = classify_sql("SELECT 1; DELETE FROM users")
