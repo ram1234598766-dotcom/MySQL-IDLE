@@ -164,7 +164,7 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertLessEqual(len(result["preview"][0][1]), mobile_companion.MAX_PREVIEW_CELL_CHARS)
 
             req = Request(self.base + "/api/export", headers={"Authorization": "Bearer " + token})
-            with urlopen(req, timeout=5) as response:
+            with urlopen(req, timeout=5, context=self.ssl_context) as response:
                 csv_text = response.read().decode("utf-8-sig")
             rows = list(csv.reader(io.StringIO(csv_text)))
             self.assertEqual(rows[0], ["id", "payload"])
@@ -185,7 +185,7 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertEqual(len(result["columns"]), mobile_companion.MAX_PREVIEW_COLUMNS)
             self.assertTrue(result["truncatedColumns"])
             req = Request(self.base + "/api/export", headers={"Authorization": "Bearer " + token})
-            with urlopen(req, timeout=5) as response:
+            with urlopen(req, timeout=5, context=self.ssl_context) as response:
                 header = next(csv.reader(io.StringIO(response.read().decode("utf-8-sig"))))
             self.assertEqual(len(header), 70)
         finally:
@@ -194,13 +194,13 @@ class MobileCompanionHTTPTests(unittest.TestCase):
     def test_host_header_rejects_unexpected_hostname(self):
         req = Request(self.base + "/", headers={"Host": "attacker.example"})
         with self.assertRaises(HTTPError) as err:
-            urlopen(req, timeout=5)
+            urlopen(req, timeout=5, context=self.ssl_context)
         self.assertEqual(err.exception.code, 403)
 
     def test_host_header_rejects_mismatched_port(self):
         req = Request(self.base + "/", headers={"Host": "localhost:1"})
         with self.assertRaises(HTTPError) as err:
-            urlopen(req, timeout=5)
+            urlopen(req, timeout=5, context=self.ssl_context)
         self.assertEqual(err.exception.code, 403)
 
     def test_oversized_request_body_returns_413(self):
@@ -214,7 +214,7 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             method="POST",
         )
         with self.assertRaises(HTTPError) as err:
-            urlopen(req, timeout=5)
+            urlopen(req, timeout=5, context=self.ssl_context)
         self.assertEqual(err.exception.code, 413)
         body = json.loads(err.exception.read().decode("utf-8"))
         self.assertIn("limit", body["error"].lower())
