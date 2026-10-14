@@ -272,10 +272,19 @@ jobs:
         shell: bash
         env:
           ANDROID_SIGNING_ENABLED: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+          ANDROID_KEYSTORE_BASE64_SET: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          ANDROID_KEYSTORE_PASSWORD_SET: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          ANDROID_KEY_ALIAS_SET: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          ANDROID_KEY_PASSWORD_SET: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
           WINDOWS_SIGNING_ENABLED: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
           WINDOWS_BUILD_SUCCESS: ${{ needs.build-windows.result == 'success' }}
         run: |
           echo "ready=$ANDROID_SIGNING_ENABLED" >> "$GITHUB_OUTPUT"
+          missing=()
+          [[ "$ANDROID_KEYSTORE_BASE64_SET" == "true" ]] || missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ "$ANDROID_KEYSTORE_PASSWORD_SET" == "true" ]] || missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ "$ANDROID_KEY_ALIAS_SET" == "true" ]] || missing+=("ANDROID_KEY_ALIAS")
+          [[ "$ANDROID_KEY_PASSWORD_SET" == "true" ]] || missing+=("ANDROID_KEY_PASSWORD")
           if [[ "$WINDOWS_SIGNING_ENABLED" == "true" && "$WINDOWS_BUILD_SUCCESS" == "true" ]]; then
             echo "windows_ready=true" >> "$GITHUB_OUTPUT"
           else
@@ -297,21 +306,41 @@ jobs:
             {
               echo "## Release not published"
               echo "A signed Android APK is required for release publication."
-              echo "Configure the four Android secrets documented in SIGNING.md, then run this workflow again."
+              if [[ ${#missing[@]} -gt 0 ]]; then
+                echo "Missing Actions secret names (values are never displayed): ${missing[*]}"
+              fi
+              echo "Set the missing secrets documented in SIGNING.md, then run this workflow again."
             } >> "$GITHUB_STEP_SUMMARY"
+            if [[ ${#missing[@]} -gt 0 ]]; then
+              echo "::warning::Missing Android signing Actions secret names: ${missing[*]}"
+            fi
           fi
       - name: Download signed Android artifact
         if: steps.signing.outputs.ready == 'true'
         uses: actions/download-artifact@v4
         with:
           name: MySQLIDLE-Android
-          path: release-assets/android
+          path: release-assets
       - name: Download signed Windows artifacts
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
         uses: actions/download-artifact@v4
         with:
           name: MySQLIDLE-Windows
-          path: release-assets/windows
+          path: release-assets
+      - name: Validate release bundle and generate checksums
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "release-assets/MySQLIDLE-Mobile-release.apk"
+          cd release-assets
+          assets=(MySQLIDLE-Mobile-release.apk MySQLIDLE_Portable.exe MySQLIDLE-Folder.zip MySQLIDLE-Setup.exe)
+          included=()
+          for asset in "${assets[@]}"; do
+            [[ -s "$asset" ]] && included+=("$asset")
+          done
+          sha256sum "${included[@]}" > SHA256SUMS
+          echo "SHA-256 checksums generated for: ${included[*]}" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish Android-only release
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready != 'true'
         uses: softprops/action-gh-release@v2
@@ -321,7 +350,9 @@ jobs:
           name: MySQL IDLE 3.0 Build ${{ github.run_number }}
           prerelease: true
           generate_release_notes: true
-          files: release-assets/android/MySQLIDLE-Mobile-release.apk
+          files: |
+            release-assets/MySQLIDLE-Mobile-release.apk
+            release-assets/SHA256SUMS
       - name: Publish Android and signed Windows release assets
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
         uses: softprops/action-gh-release@v2
@@ -332,7 +363,8 @@ jobs:
           prerelease: true
           generate_release_notes: true
           files: |
-            release-assets/android/MySQLIDLE-Mobile-release.apk
-            release-assets/windows/MySQLIDLE_Portable.exe
-            release-assets/windows/MySQLIDLE-Folder.zip
-            release-assets/windows/MySQLIDLE-Setup.exe
+            release-assets/MySQLIDLE-Mobile-release.apk
+            release-assets/MySQLIDLE_Portable.exe
+            release-assets/MySQLIDLE-Folder.zip
+            release-assets/MySQLIDLE-Setup.exe
+            release-assets/SHA256SUMS

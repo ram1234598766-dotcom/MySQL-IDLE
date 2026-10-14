@@ -6,7 +6,7 @@ A desktop SQL shell for MySQL/MariaDB with background query execution, disk-back
 
 Push a commit to `main` or run the GitHub Actions workflow to compile and test the app. If release-signing secrets are not set, CI builds an Android debug APK and unsigned Windows files as test artifacts only; it deliberately does not publish them as release downloads.
 
-To publish an Android release, configure all four Android signing secrets in `SIGNING.md`; the workflow verifies and publishes the release-signed APK. Windows assets remain excluded until a trusted Windows code-signing certificate is configured and all Windows signatures verify. Android and Windows use separate signing identities. A Windows signature does not guarantee SmartScreen warnings disappear immediately.
+To publish an Android release, configure all four Android signing secrets in `SIGNING.md`; the workflow verifies and publishes the release-signed APK. Windows assets remain excluded until a trusted Windows code-signing certificate is configured and all Windows signatures verify. Android and Windows use separate signing identities. A Windows signature does not guarantee SmartScreen warnings disappear immediately. Published releases include a `SHA256SUMS` manifest for downloaded-file integrity checks.
 
 ## App branding
 
@@ -35,6 +35,8 @@ The normal Windows user only needs the packaged `.exe` or installer; Python is r
 ## Android companion
 
 The Android app is a WebView client for the companion hosted by the desktop application. Start the companion in **Tools → Android / Mobile Companion** on the desktop, then enter the root LAN address in the Android app (for example, `http://192.168.1.20:8765`). The Android app rejects paths, query strings, fragments and embedded usernames so the saved URL matches the desktop service's root endpoint. Both devices must be on a trusted private network. The companion currently uses HTTP on the LAN, which is not encrypted; pairing codes, queries and database credentials cross that network in clear text. Do not use public Wi-Fi, router port forwarding or public exposure; for remote use, prefer a trusted VPN/private tunnel. The APK does not embed your MySQL password or run a MySQL server on Android.
+
+The mobile SQL editor includes previous/next query history (at most 50 entries in page memory, cleared on disconnect or session expiry) and quick templates for server version, current database, database/table lists, and server time. The mobile query history is never written to persistent browser storage. Review templates before execution; SQL runs with the connected MySQL account's permissions.
 
 ## Security and verification
 
