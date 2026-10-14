@@ -20,14 +20,15 @@ APPROVAL_TTL_SECONDS = 45
 _MUTATION_WORDS = {
     "INSERT", "UPDATE", "DELETE", "REPLACE", "CREATE", "ALTER", "DROP",
     "TRUNCATE", "RENAME", "GRANT", "REVOKE", "CALL", "LOAD", "IMPORT",
-    "LOCK", "UNLOCK", "FLUSH", "RESET", "KILL", "SHUTDOWN", "ANALYZE",
+    "LOCK", "UNLOCK", "FLUSH", "RESET", "KILL", "SHUTDOWN", "ANALYZE", "SET",
+    "CHANGE",
     "OPTIMIZE", "REPAIR", "INSTALL", "UNINSTALL", "PREPARE", "EXECUTE",
 }
 _ADMIN_WORDS = {
     "GRANT", "REVOKE", "SHUTDOWN", "KILL", "FLUSH", "RESET", "INSTALL",
     "UNINSTALL", "LOCK", "UNLOCK", "LOAD", "IMPORT", "PREPARE", "EXECUTE",
 }
-_DESTRUCTIVE_WORDS = {"DROP", "TRUNCATE", "ALTER"}
+_DESTRUCTIVE_WORDS = {"DROP", "TRUNCATE", "ALTER", "RENAME"}
 
 
 def _tokens(sql: str) -> list[str]:
@@ -132,6 +133,12 @@ def classify_sql(sql: str) -> dict[str, str | bool]:
         high_reasons.append("DDL can irreversibly change or remove database objects.")
     if "CALL" in top_level_words:
         high_reasons.append("Stored procedures may perform broad or privileged database changes.")
+    if "LOAD_FILE" in top_level_words:
+        high_reasons.append("LOAD_FILE can expose files from the database server to the query result.")
+    if "SET" in top_level_words and "PASSWORD" in top_level_words:
+        high_reasons.append("Changing database account credentials is a high-impact security operation.")
+    if "CHANGE" in top_level_words and top_level_words.intersection({"MASTER", "REPLICATION", "SOURCE"}):
+        high_reasons.append("Changing replication configuration can disrupt database availability or consistency.")
     if top_level_words & _ADMIN_WORDS:
         high_reasons.append("Administrative or file-related SQL can affect server-wide state.")
     if {"OUTFILE", "DUMPFILE", "PERSIST"} & top_level_words:
@@ -153,7 +160,12 @@ def classify_sql(sql: str) -> dict[str, str | bool]:
 
     reason = " ".join(dict.fromkeys(high_reasons))
     if high_reasons:
-        if top_level_words & _ADMIN_WORDS or ("GLOBAL" in top_level_words and "SET" in top_level_words):
+        if (
+            top_level_words & _ADMIN_WORDS
+            or ("GLOBAL" in top_level_words and "SET" in top_level_words)
+            or ("SET" in top_level_words and "PASSWORD" in top_level_words)
+            or ("CHANGE" in top_level_words and top_level_words.intersection({"MASTER", "REPLICATION", "SOURCE"}))
+        ):
             category = "administrative"
         elif top_level_words & _DESTRUCTIVE_WORDS:
             category = "destructive"
