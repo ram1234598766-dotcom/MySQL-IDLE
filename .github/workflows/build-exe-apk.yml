@@ -535,6 +535,11 @@ jobs:
             echo "avdmanager did not create the expected AVD definition." >&2
             exit 1
           fi
+          if [[ ! -e /dev/kvm ]]; then
+            echo "GitHub runner has no /dev/kvm device; x86_64 Android emulator cannot use hardware acceleration." >&2
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd mysqlidle-smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/mysqlidle-emulator.log" 2>&1 &
           emulator_pid=$!
           cleanup() {
