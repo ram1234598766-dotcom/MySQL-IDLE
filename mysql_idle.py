@@ -1588,7 +1588,17 @@ class MySQLIDLE:
         self.root.title(f"{APP_NAME} - {info.get('user', '')}@{info.get('host', '')}/{self.current_db or ''}")
 
     def toggle_autocommit(self):
-        self._queue_job("autocommit", self.autocommit.get())
+        enabled = bool(self.autocommit.get())
+        if enabled and self.governor.read_only:
+            self.autocommit.set(False)
+            message = (
+                "Read-only mode prevents enabling auto-commit because MySQL may commit pending "
+                "changes. Roll back the current transaction or disable read-only mode first."
+            )
+            self.governor.record_decision("SET autocommit=1", "block", message, "transaction", "high")
+            messagebox.showwarning("Feature Governance", message, parent=self.root)
+            return
+        self._queue_job("autocommit", enabled)
 
     def do_commit(self):
         self._txn("commit")
