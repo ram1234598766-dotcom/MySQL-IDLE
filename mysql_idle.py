@@ -53,6 +53,8 @@ from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from feature_governor import FeatureGovernor
+
 try:
     import pymysql
     PYMYSQL_IMPORT_ERROR = None
@@ -531,9 +533,10 @@ class ConnectDialog(tk.Toplevel):
 class DatabaseWorker(threading.Thread):
     """Own the MySQL connection off the UI thread and stream result sets to disk."""
 
-    def __init__(self, events):
+    def __init__(self, events, governor=None):
         super().__init__(name="mysql-idle-db", daemon=True)
         self.events = events
+        self.governor = governor or FeatureGovernor()
         self.jobs = queue.Queue()
         self.conn = None
         self.conn_info = {}
@@ -746,6 +749,15 @@ class DatabaseWorker(threading.Thread):
 
         completed = 0
         for index, stmt in enumerate(statements, start=1):
+            policy = self.governor.check_sql(stmt)
+            if policy["decision"] != "allow":
+                self.output(
+                    f"Feature Governance stopped statement {index}: {policy['reason']} "
+                    f"(risk: {policy['risk']}; fingerprint: {self.governor._digest(stmt)}).\\n",
+                    "error",
+                )
+                # Fail closed: a batch never continues after a policy stop.
+                return
             if echo:
                 self.output(PS1 + stmt.rstrip().rstrip(";") + ";\n")
             ok = self._execute_statement(stmt)
@@ -927,8 +939,9 @@ class MySQLIDLE:
         if not SAVE_HISTORY:
             self.cfg.pop("history", None)
 
+        self.governor = FeatureGovernor(self.cfg.get("feature_policy", {}))
         self.events = queue.Queue()
-        self.worker = DatabaseWorker(self.events)
+        self.worker = DatabaseWorker(self.events, self.governor)
         self.connected = False
         self.conn_info = {}
         self.current_db = None
@@ -1024,6 +1037,8 @@ class MySQLIDLE:
         tools_m = tk.Menu(bar, tearoff=0)
         tools_m.add_command(label="Android / Mobile Companion...", command=self.show_mobile_companion)
         tools_m.add_command(label="Stop Mobile Companion", command=self.stop_mobile_companion, state=tk.DISABLED)
+        tools_m.add_separator()
+        tools_m.add_command(label="Feature Governance...", command=self.show_feature_governance)
         self.tools_menu = tools_m
         bar.add_cascade(label="Tools", menu=tools_m)
 
@@ -1391,12 +1406,47 @@ class MySQLIDLE:
         statements, rest = split_sql(self.pending)
         self.pending = rest if rest.strip() else ""
         complete = [stmt for stmt in statements if not is_blank_sql(stmt)]
-        if complete:
+        if complete and self._preflight_statements(complete, source="interactive query"):
             self._queue_job("query", {
                 "statements": complete, "stop_on_error": False,
                 "echo": False, "script_name": None,
             })
         self.new_prompt(continuation=bool(self.pending))
+
+    def _preflight_statements(self, statements, source="query"):
+        """Ask in the UI thread before queueing high-impact SQL; worker rechecks policy."""
+        for stmt in statements:
+            policy = self.governor.inspect_sql(stmt)
+            digest = self.governor._digest(stmt)
+            if policy["decision"] == "block":
+                self.governor.record_decision(stmt, "block", str(policy["reason"]),
+                                              str(policy["category"]), str(policy["risk"]))
+                messagebox.showwarning(
+                    "Feature Governance",
+                    f"Blocked by current policy.\n\n{policy['reason']}\n\n"
+                    f"Risk: {policy['risk']} | Statement fingerprint: {digest}",
+                    parent=self.root,
+                )
+                self.write(f"Feature Governance blocked a statement ({digest}).\n", "error")
+                return False
+            if policy["decision"] == "confirm":
+                approved = messagebox.askyesno(
+                    "Confirm high-impact SQL",
+                    f"MySQL IDLE detected a high-impact statement in {source}.\n\n"
+                    f"Risk category: {policy['category']}\nRisk level: {policy['risk']}\n"
+                    f"Reason: {policy['reason']}\n\n"
+                    f"Statement fingerprint: {digest}\n\n"
+                    "Approve this exact statement once?",
+                    icon="warning",
+                    parent=self.root,
+                )
+                if not approved:
+                    self.governor.record_decision(stmt, "cancelled", "User declined high-impact SQL.",
+                                                  str(policy["category"]), str(policy["risk"]))
+                    self.write("High-impact SQL cancelled by Feature Governance.\n", "info")
+                    return False
+                self.governor.approve_once(stmt)
+        return True
 
     def show_result(self, columns, rows, row_count, elapsed):
         if row_count == 0:
@@ -1554,9 +1604,98 @@ class MySQLIDLE:
     def show_diagnostics(self):
         messagebox.showinfo(f"{APP_NAME} Environment Check", runtime_diagnostics(), parent=self.root)
 
+    def show_feature_governance(self):
+        """Expose runtime policy controls and a redacted, bounded audit view."""
+        win = tk.Toplevel(self.root, bg="white", padx=16, pady=14)
+        win.title("MySQL IDLE Feature Governance")
+        win.geometry("720x560")
+        win.minsize(580, 420)
+        win.transient(self.root)
+
+        tk.Label(win, text="Runtime policy controls", bg="white",
+                 font=("Segoe UI", 12, "bold"), anchor="w").pack(fill=tk.X, pady=(0, 4))
+        tk.Label(
+            win,
+            text="Policies apply to Windows SQL execution and the paired Android companion. "
+                 "High-impact statements require one-time approval. The audit trail stores only a "
+                 "statement fingerprint and decision, never SQL text or credentials.",
+            bg="white", fg="#555555", justify=tk.LEFT, wraplength=680, anchor="w",
+        ).pack(fill=tk.X, pady=(0, 12))
+
+        read_only_var = tk.BooleanVar(value=self.governor.read_only)
+        mobile_var = tk.BooleanVar(value=self.governor.mobile_companion_enabled)
+        ttk.Checkbutton(
+            win, text="Read-only mode — block writes, schema changes and administrative SQL",
+            variable=read_only_var,
+        ).pack(anchor="w", pady=3)
+        ttk.Checkbutton(
+            win, text="Allow Android / Mobile Companion",
+            variable=mobile_var,
+        ).pack(anchor="w", pady=3)
+
+        notes = self.governor.forced_policy_notes
+        notes_text = "Environment overrides: " + (" ".join(notes) if notes else "none")
+        tk.Label(win, text=notes_text, bg="white", fg="#7c2d12",
+                 wraplength=680, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(4, 10))
+
+        tk.Label(win, text="Recent policy decisions (newest at bottom)", bg="white",
+                 font=("Segoe UI", 10, "bold"), anchor="w").pack(fill=tk.X)
+        audit = tk.Text(win, height=14, wrap=tk.WORD, state=tk.DISABLED,
+                        font=("Consolas", 9), bg="#f7f9fc", relief=tk.SOLID, borderwidth=1)
+        audit.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
+
+        def refresh_audit():
+            events = self.governor.audit_events(60)
+            audit.configure(state=tk.NORMAL)
+            audit.delete("1.0", tk.END)
+            for item in events:
+                audit.insert(
+                    tk.END,
+                    f"{item['time']} | {item['decision'].upper()} | "
+                    f"{item['category']}/{item['risk']} | {item['reason']} "
+                    f"[{item['statement_digest']}]\n",
+                )
+            if not events:
+                audit.insert(tk.END, "No policy events in this session yet.\n")
+            audit.configure(state=tk.DISABLED)
+
+        def apply_policy():
+            self.governor.set_policy(
+                read_only=read_only_var.get(),
+                mobile_companion_enabled=mobile_var.get(),
+            )
+            self.cfg["feature_policy"] = self.governor.snapshot()
+            save_config(self.cfg)
+            read_only_var.set(self.governor.read_only)
+            mobile_var.set(self.governor.mobile_companion_enabled)
+            if not self.governor.mobile_companion_enabled and self.mobile_server is not None:
+                self.stop_mobile_companion()
+            self.with_output(lambda: self.write(
+                "Feature Governance policy updated: "
+                f"{'READ-ONLY' if self.governor.read_only else 'GUARDED'} mode; "
+                f"mobile companion {'enabled' if self.governor.mobile_companion_enabled else 'disabled'}.\n",
+                "info",
+            ))
+            refresh_audit()
+
+        buttons = ttk.Frame(win)
+        buttons.pack(fill=tk.X)
+        ttk.Button(buttons, text="Refresh audit", command=refresh_audit).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Apply policy", command=apply_policy).pack(side=tk.RIGHT)
+        ttk.Button(buttons, text="Close", command=win.destroy).pack(side=tk.RIGHT, padx=8)
+        refresh_audit()
+        win.grab_set()
+
     def show_mobile_companion(self):
         if self._mobile_stopping:
             messagebox.showinfo("Mobile Companion", "The previous mobile session is still shutting down. Try again in a moment.", parent=self.root)
+            return
+        if not self.governor.feature_enabled("mobile_companion"):
+            messagebox.showwarning(
+                "Feature Governance",
+                "The Android / Mobile Companion is disabled by the current feature policy.",
+                parent=self.root,
+            )
             return
         if self.mobile_server and self.mobile_server.running:
             self._show_mobile_companion_dialog()
@@ -1564,7 +1703,7 @@ class MySQLIDLE:
         consent = messagebox.askyesno(
             "Enable Android / Mobile Companion",
             "This starts a temporary web interface on your local network so an Android phone can run SQL through this computer.\n\n"
-            "Security note: this companion uses HTTP, which does not encrypt traffic. Enable it only on a trusted private Wi-Fi/LAN, never on public Wi-Fi, and never forward its port to the internet. The random pairing code grants database access until the companion is stopped.\n\n"
+            "Security note: this companion uses HTTPS with TLS certificate fingerprint verification. Enable it only on a trusted private Wi-Fi/LAN, never on public Wi-Fi, and never forward its port to the internet. The random pairing code grants database access until the companion is stopped.\n\n"
             "Start it now?",
             icon="warning", parent=self.root,
         )
@@ -1572,7 +1711,7 @@ class MySQLIDLE:
             return
         try:
             from mobile_companion import MobileCompanionServer
-            self.mobile_server = MobileCompanionServer()
+            self.mobile_server = MobileCompanionServer(governor=self.governor)
             self.mobile_server.start()
             self.tools_menu.entryconfig(1, state=tk.NORMAL)
             self.with_output(lambda: self.write("Android / Mobile Companion enabled on the local network.\n", "info"))
@@ -1700,6 +1839,8 @@ class MySQLIDLE:
             statements.append(rest.strip())
         statements = [stmt for stmt in statements if not is_blank_sql(stmt)]
         self.pending = ""
+        if not self._preflight_statements(statements, source=os.path.basename(path)):
+            return
         self._queue_job("script", {"statements": statements, "name": os.path.basename(path)})
 
     def save_log(self):
