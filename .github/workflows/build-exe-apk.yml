@@ -526,7 +526,7 @@ jobs:
           set -euo pipefail
           test -s "$APK_SMOKE_PATH"
           timeout 300s sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
-          echo "no" | timeout 60s avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-35;google_apis;x86_64" --device "pixel_2"
+          echo "no" | timeout 60s avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-35;google_apis;x86_64"
           "$ANDROID_HOME/emulator/emulator" -avd mysqlidle-smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2 > "$RUNNER_TEMP/mysqlidle-emulator.log" 2>&1 &
           emulator_pid=$!
           cleanup() {
