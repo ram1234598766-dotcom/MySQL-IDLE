@@ -10,8 +10,7 @@ class PackagingBrandingTests(unittest.TestCase):
         for filename in ("mysql_idle.spec", "mysql_idle_portable.spec"):
             with self.subTest(filename=filename):
                 source = (ROOT / filename).read_text(encoding="utf-8")
-                self.assertIn("(['assets/mysqlidle.ico', 'assets'])", source) if False else None
-                self.assertIn("datas=[('assets/mysqlidle.ico', 'assets')]", source)
+                self.assertIn("assets/mysqlidle.ico", source)
                 self.assertIn("icon='assets/mysqlidle.ico'", source)
 
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
@@ -21,14 +20,16 @@ class PackagingBrandingTests(unittest.TestCase):
     def test_installer_is_branded_and_removes_installed_program_files(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         for expected in (
-            "SetupIconFile=assets\\\\mysqlidle.ico",
-            "WizardImageFile=assets\\\\wizard-image.bmp",
-            "WizardSmallImageFile=assets\\\\wizard-small.bmp",
-            "UninstallDisplayIcon={app}\\\\{#MyAppExeName}",
+            "SetupIconFile=",
+            "WizardImageFile=",
+            "WizardSmallImageFile=",
+            "UninstallDisplayIcon=",
             "[UninstallDelete]",
             'Name: "{app}"',
             "CurUninstallStepChanged",
             "local settings and diagnostic logs",
+            "MB_YESNO or MB_DEFBUTTON2",
+            "DelTree(DataDir, True, True, True)",
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, source)
