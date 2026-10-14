@@ -48,3 +48,56 @@ Name: "{autodesktop}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; Tasks: desk
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch MySQL IDLE"; Flags: nowait postinstall skipifsilent
+
+
+; Remove files created or left inside the application installation directory.
+; User settings/logs live outside {app} and are handled by an explicit opt-in prompt.
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}"
+
+[Code]
+var
+  RemoveUserData: Boolean;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  RemoveUserData := False;
+
+  { Preserve per-user preferences unless an interactive user explicitly opts in. }
+  if not WizardSilent then
+    RemoveUserData := MsgBox(
+      'Also remove local settings, SQL history (if disk history was enabled), and diagnostic logs for this Windows account?' + #13#10 + #13#10 +
+      'Choose No to keep these files. This does not delete MySQL databases, database files, or files outside MySQL IDLE''s own settings locations. The choice to remove settings cannot be undone.',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir: String;
+  LegacyConfig: String;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    if not WizardSilent then
+      UninstallProgressForm.StatusLabel.Caption := 'Removing MySQL IDLE program files and shortcuts...';
+  end
+  else if CurUninstallStep = usPostUninstall then
+  begin
+    if RemoveUserData then
+    begin
+      if not WizardSilent then
+        UninstallProgressForm.StatusLabel.Caption := 'Removing saved settings and diagnostic logs...';
+
+      DataDir := ExpandConstant('{localappdata}\MySQL IDLE');
+      if DirExists(DataDir) and not DelTree(DataDir, True, True, True) then
+        Log('Some MySQL IDLE settings or log files could not be removed from: ' + DataDir);
+
+      LegacyConfig := ExpandConstant('{localappdata}\..\..\.mysql_idle.json');
+      if FileExists(LegacyConfig) and not DeleteFile(LegacyConfig) then
+        Log('Could not remove legacy MySQL IDLE settings: ' + LegacyConfig);
+    end;
+    if not WizardSilent then
+      UninstallProgressForm.StatusLabel.Caption := 'Uninstall cleanup finished.';
+  end;
+end;
