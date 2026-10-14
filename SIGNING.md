@@ -25,11 +25,13 @@ In the repository, open **Settings → Secrets and variables → Actions → New
 | Secret name | Value |
 | --- | --- |
 | `ANDROID_KEYSTORE_BASE64` | Clipboard value containing the Base64-encoded `.jks` |
-| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
-| `ANDROID_KEY_ALIAS` | `mysqlidle` (or the alias you chose) |
-| `ANDROID_KEY_PASSWORD` | Password for that key alias |
+| `ANDROID_KEYSTORE_PASSWORD` | The keystore/store password entered when you created or changed the `.jks` file |
+| `ANDROID_KEY_ALIAS` | The exact key alias inside that keystore, e.g. `mysqlidle` if you used that alias |
+| `ANDROID_KEY_PASSWORD` | The private-key password for that alias (it may be the same as the store password, but does not have to be) |
 
-Use the exact same keystore and alias for every later release of this Android application. The CI verifies the APK with Android's `apksigner`.
+**Do not swap the two password secrets.** `ANDROID_KEYSTORE_PASSWORD` must open the keystore file; `ANDROID_KEY_PASSWORD` unlocks the private key inside it. If Gradle reports that the keystore password is incorrect, verify `ANDROID_KEYSTORE_PASSWORD` against the same keystore file you encoded. If the keystore and key use different passwords, keep the values separate.
+
+Before Gradle packaging, CI now validates the store password, alias, and private-key password with `keytool`. Diagnostics name the failing secret variable but never print secret values. The completed APK is still checked with Android's `apksigner`.
 
 ## 2. Trusted Windows code-signing certificate
 
