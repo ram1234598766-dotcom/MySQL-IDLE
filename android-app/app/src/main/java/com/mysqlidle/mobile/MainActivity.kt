@@ -217,12 +217,17 @@ class MainActivity : Activity() {
     }
 
     private fun certificateFingerprint(error: SslError): String? = runCatching {
-        val state = SslCertificate.saveState(error.certificate) ?: return null
-        val bytes = state.getByteArray(SslCertificate.EXTRA_CERTIFICATE) ?: return null
-        val certificate = CertificateFactory.getInstance("X.509")
-            .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
+        val certificate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            error.certificate.x509Certificate
+        } else {
+            // SslCertificate exposes the encoded leaf in its saved state on older Android releases.
+            val state = SslCertificate.saveState(error.certificate) ?: return null
+            val bytes = state.getByteArray("x509-certificate") ?: return null
+            CertificateFactory.getInstance("X.509")
+                .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
+        } ?: return null
         MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
-            .joinToString("") { "%02X".format(it) }
+            .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0').uppercase() }
     }.getOrNull()
 
     private fun showWebView(uri: Uri) {
