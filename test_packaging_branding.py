@@ -17,6 +17,15 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('ASSETS / "mysqlidle.ico"', generator)
         self.assertTrue((ROOT / "assets" / "mysqlidle-logo.svg").is_file())
 
+    def test_windows_mysql_connection_defaults_to_certificate_optional_tls(self):
+        source = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
+        self.assertIn("DEFAULT_MYSQL_TLS_VERIFY = False", source)
+        self.assertIn("defaults.get(\"tls_verify\", DEFAULT_MYSQL_TLS_VERIFY)", source)
+        self.assertIn("params.get(\"tls_verify\", DEFAULT_MYSQL_TLS_VERIFY)", source)
+        self.assertIn("tls_verify=DEFAULT_MYSQL_TLS_VERIFY", source)
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("PyMySQL>=1.2.0,<2.0", requirements)
+
     def test_installer_is_branded_and_removes_installed_program_files(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         for expected in (
