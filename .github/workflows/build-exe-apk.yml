@@ -352,6 +352,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_ALLOW_NEW_SIGNING_KEY: ${{ vars.ANDROID_ALLOW_NEW_SIGNING_KEY }}
         run: |
           set -euo pipefail
           store="$RUNNER_TEMP/mysqlidle-release.jks"
@@ -393,12 +394,18 @@ jobs:
             exit 0
           fi
 
-          # Last resort: make a new signing identity, and save an encrypted backup artifact.
+          # Never silently rotate the Android app-signing identity. A missing or
+          # invalid keystore can break updates for users who already installed the app.
+          if [[ "${ANDROID_ALLOW_NEW_SIGNING_KEY:-false}" != "true" ]]; then
+            echo "::error::The provided Android keystore and encrypted backup could not be validated. Release signing was stopped to protect update compatibility. Restore the existing key, or set the repository Actions variable ANDROID_ALLOW_NEW_SIGNING_KEY=true only when intentionally creating a new signing identity."
+            exit 1
+          fi
+          # Explicitly opted-in first release or intentional key replacement.
           if [[ ${#ANDROID_KEYSTORE_PASSWORD} -lt 6 ]]; then
             echo "::error::ANDROID_KEYSTORE_PASSWORD must contain at least 6 characters to create a replacement signing key."
             exit 1
           fi
-          echo "::warning::The supplied signing key could not be validated. Generating a new Android signing identity; future updates must retain this key."
+          echo "::warning::The operator explicitly allowed generation of a new Android signing identity. Existing installations signed by another key cannot be updated by this identity."
           rm -f "$store"
           keytool -genkeypair -v -storetype JKS -keystore "$store" -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEYSTORE_PASSWORD" -alias "$new_alias" -keyalg RSA -keysize 3072 -validity 10000 -dname "CN=MySQL IDLE Release, O=MySQL IDLE" -noprompt >/dev/null 2>&1
           keytool -list -keystore "$store" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$new_alias" >/dev/null 2>&1
