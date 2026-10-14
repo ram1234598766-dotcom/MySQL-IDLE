@@ -31,7 +31,7 @@ WizardImageFile=assets\wizard-image.bmp
 WizardSmallImageFile=assets\wizard-small.bmp
 WizardImageFileDynamicDark=assets\wizard-image.bmp
 WizardSmallImageFileDynamicDark=assets\wizard-small.bmp
-UninstallDisplayIcon={app}\assets\mysqlidle.ico
+UninstallDisplayIcon={app}\_internal\assets\mysqlidle.ico
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
@@ -45,8 +45,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#MyDistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mysqlidle.ico"; IconIndex: 0
-Name: "{autodesktop}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\assets\mysqlidle.ico"; IconIndex: 0
+Name: "{autoprograms}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\_internal\assets\mysqlidle.ico"; IconIndex: 0
+Name: "{autodesktop}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\_internal\assets\mysqlidle.ico"; IconIndex: 0
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch MySQL IDLE"; Flags: nowait postinstall skipifsilent
