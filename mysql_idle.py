@@ -469,15 +469,15 @@ class ConnectDialog(tk.Toplevel):
                     command=lambda v=var: self._browse_ca(v),
                 ).grid(row=row, column=2, sticky="w", padx=(8, 0), pady=4)
 
-        self.tls_verify = tk.BooleanVar(value=bool(defaults.get("tls_verify", True)))
+        self.tls_verify = tk.BooleanVar(value=bool(defaults.get("tls_verify", False)))
         ttk.Checkbutton(
             self,
-            text="Require verified TLS to MySQL (recommended)",
+            text="Verify MySQL server certificate (optional)",
             variable=self.tls_verify,
         ).grid(row=len(self.FIELDS), column=0, columnspan=3, sticky="w", pady=(8, 2))
         tk.Label(
             self,
-            text="Turning this off allows unverified MySQL TLS and can expose database traffic to interception.",
+            text="Off by default for compatibility with local or self-signed certificates. Encryption is attempted when the server supports it, but its identity is not verified. Enable verification and provide a trusted CA to validate the server.",
             bg="white",
             fg="#9A3412",
             anchor="w",
@@ -607,7 +607,7 @@ class DatabaseWorker(threading.Thread):
         database = params.get("database") or None
         autocommit = bool(params.get("autocommit", True))
         ssl_ca = str(params.get("ssl_ca") or "").strip()
-        tls_verify = bool(params.get("tls_verify", True))
+        tls_verify = bool(params.get("tls_verify", False))
         if ssl_ca and not os.path.isfile(ssl_ca):
             self.output("MySQL CA certificate file was not found.\n", "error")
             return
@@ -933,7 +933,7 @@ class DatabaseWorker(threading.Thread):
                     "charset": "utf8mb4", "autocommit": True,
                     "connect_timeout": 5, "read_timeout": 5, "write_timeout": 5,
                 }
-                if credentials.get("tls_verify", True):
+                if credentials.get("tls_verify", False):
                     control_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
                 if credentials.get("ssl_ca"):
                     control_options["ssl_ca"] = credentials["ssl_ca"]
@@ -1541,7 +1541,7 @@ class MySQLIDLE:
                             "user": info.get("user", ""),
                             "database": info.get("database", "") or "",
                             "ssl_ca": info.get("ssl_ca", "") or "",
-                            "tls_verify": bool(info.get("tls_verify", True)),
+                            "tls_verify": bool(info.get("tls_verify", False)),
                         }
                         signature = tuple(saved.items())
                         if signature != self._persisted_connection:
@@ -1566,7 +1566,7 @@ class MySQLIDLE:
     def connect_dialog(self):
         defaults = {
             "host": "localhost", "port": "3306", "user": "root", "password": "",
-            "database": "", "ssl_ca": "", "tls_verify": True,
+            "database": "", "ssl_ca": "", "tls_verify": False,
         }
         defaults.update(self.cfg.get("last_connection", {}))
         dialog = ConnectDialog(self.root, defaults)
@@ -1574,7 +1574,7 @@ class MySQLIDLE:
             self.connect(**dialog.result)
         self.text.focus_set()
 
-    def connect(self, host, port, user, password, database, ssl_ca="", tls_verify=True):
+    def connect(self, host, port, user, password, database, ssl_ca="", tls_verify=False):
         self._queue_job("connect", {
             "host": host, "port": port, "user": user, "password": password,
             "database": database, "ssl_ca": ssl_ca, "tls_verify": bool(tls_verify),
