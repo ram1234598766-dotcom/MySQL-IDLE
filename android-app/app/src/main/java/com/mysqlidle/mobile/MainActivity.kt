@@ -217,7 +217,7 @@ class MainActivity : Activity() {
     }
 
     private fun certificateFingerprint(error: SslError): String? = runCatching {
-        val certificate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val certificate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             error.certificate.x509Certificate
         } else {
             // SslCertificate exposes the encoded leaf in its saved state on older Android releases.
@@ -348,8 +348,10 @@ class MainActivity : Activity() {
                 loadingBar.visibility = View.GONE
                 loadingStatus.text = if (actualFingerprint == null) {
                     "TLS certificate could not be inspected. Connection blocked."
+                } else if (isOnlyUntrustedCertificate) {
+                    "TLS certificate fingerprint mismatch. Compare the complete fingerprint with the value displayed on the desktop; connection blocked."
                 } else {
-                    "TLS certificate mismatch or certificate date/hostname error. Connection blocked. Compare the fingerprint on the desktop and phone."
+                    "TLS certificate date or hostname validation failed. Check the device clock and desktop URL; connection blocked."
                 }
                 loadingStatus.visibility = View.VISIBLE
                 refreshButton.isEnabled = true
