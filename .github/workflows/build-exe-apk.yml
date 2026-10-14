@@ -358,7 +358,7 @@ jobs:
           new_alias="mysqlidle-release"
 
           # Prefer the publisher's exact existing signing key whenever it validates.
-          if [[ "\${ANDROID_KEYSTORE_RESTORE_FAILED:-false}" != "true" && -s "$store" ]] &&
+          if [[ "${ANDROID_KEYSTORE_RESTORE_FAILED:-false}" != "true" && -s "$store" ]] &&
              keytool -list -keystore "$store" -storepass "$ANDROID_KEYSTORE_PASSWORD" >/dev/null 2>&1 &&
              keytool -list -keystore "$store" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1 &&
              keytool -certreq -keystore "$store" -storepass "$ANDROID_KEYSTORE_PASSWORD" -keypass "$ANDROID_KEY_PASSWORD" -alias "$ANDROID_KEY_ALIAS" -file "$check_dir/validation.csr" >/dev/null 2>&1; then
@@ -392,7 +392,7 @@ jobs:
           fi
 
           # Last resort: make a new signing identity, and save an encrypted backup artifact.
-          if [[ \${#ANDROID_KEYSTORE_PASSWORD} -lt 6 ]]; then
+          if [[ ${#ANDROID_KEYSTORE_PASSWORD} -lt 6 ]]; then
             echo "::error::ANDROID_KEYSTORE_PASSWORD must contain at least 6 characters to create a replacement signing key."
             exit 1
           fi
@@ -424,7 +424,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           mkdir -p dist
           cp "$apk" dist/MySQLIDLE-Mobile-release.apk
-          if [[ "\${ANDROID_KEYSTORE_WAS_REPLACED:-false}" == "true" ]]; then
+          if [[ "${ANDROID_KEYSTORE_WAS_REPLACED:-false}" == "true" ]]; then
             openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
               -in "$RUNNER_TEMP/mysqlidle-release.jks" \
               -out dist/MySQLIDLE-SigningKey.jks.enc \
