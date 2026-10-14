@@ -473,9 +473,18 @@ class ConnectDialog(tk.Toplevel):
             text="Require verified TLS to MySQL (recommended)",
             variable=self.tls_verify,
         ).grid(row=len(self.FIELDS), column=0, columnspan=3, sticky="w", pady=(8, 2))
+        tk.Label(
+            self,
+            text="Turning this off allows unverified MySQL TLS and can expose database traffic to interception.",
+            bg="white",
+            fg="#9A3412",
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=390,
+        ).grid(row=len(self.FIELDS) + 1, column=0, columnspan=3, sticky="w", pady=(0, 2))
 
         buttons = tk.Frame(self, bg="white")
-        buttons.grid(row=len(self.FIELDS) + 1, column=0, columnspan=3, sticky="e", pady=(12, 0))
+        buttons.grid(row=len(self.FIELDS) + 2, column=0, columnspan=3, sticky="e", pady=(12, 0))
         ttk.Button(buttons, text="Connect", command=self.on_ok).pack(side=tk.RIGHT)
         ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, padx=8)
 
