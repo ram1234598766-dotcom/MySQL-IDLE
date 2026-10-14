@@ -949,8 +949,8 @@ class DatabaseWorker(threading.Thread):
                 }
                 if credentials.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY):
                     control_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
-                if credentials.get("ssl_ca"):
-                    control_options["ssl_ca"] = credentials["ssl_ca"]
+                    if credentials.get("ssl_ca"):
+                        control_options["ssl_ca"] = credentials["ssl_ca"]
                 control = pymysql.connect(**control_options)
                 with control.cursor() as cur:
                     cur.execute(f"KILL QUERY {int(thread_id)}")
