@@ -27,7 +27,7 @@ class PackagingBrandingTests(unittest.TestCase):
             "[UninstallDelete]",
             'Name: "{app}"',
             "CurUninstallStepChanged",
-            "local settings and diagnostic logs",
+            "local settings, SQL history",
             "MB_YESNO or MB_DEFBUTTON2",
             "DelTree(DataDir, True, True, True)",
         ):
