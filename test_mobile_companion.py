@@ -3,6 +3,7 @@ import csv
 import importlib.util
 import io
 import json
+import ssl
 import sys
 import types
 import unittest
@@ -86,7 +87,9 @@ class MobileCompanionHTTPTests(unittest.TestCase):
     def setUp(self):
         self.server = mobile_companion.MobileCompanionServer(port=0, bind_host="127.0.0.1")
         self.server.start()
-        self.base = f"http://127.0.0.1:{self.server.port}"
+        self.base = f"https://127.0.0.1:{self.server.port}"
+        # This is test-only: the companion uses a temporary self-signed cert.
+        self.ssl_context = ssl._create_unverified_context()
 
     def tearDown(self):
         self.server.stop()
@@ -97,7 +100,7 @@ class MobileCompanionHTTPTests(unittest.TestCase):
         if token:
             headers["Authorization"] = "Bearer " + token
         req = Request(self.base + path, data=data, headers=headers, method=method)
-        with urlopen(req, timeout=5) as response:
+        with urlopen(req, timeout=5, context=self.ssl_context) as response:
             return response.status, json.loads(response.read().decode("utf-8"))
 
     def pair(self):
@@ -106,9 +109,15 @@ class MobileCompanionHTTPTests(unittest.TestCase):
         return result["token"]
 
     def test_mobile_page_is_responsive_app(self):
-        with urlopen(self.base + "/", timeout=5) as response:
+        with urlopen(self.base + "/", timeout=5, context=self.ssl_context) as response:
             body = response.read().decode("utf-8")
             self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+            self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
+            self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
+            self.assertEqual(response.headers.get("Cross-Origin-Resource-Policy"), "same-origin")
+            self.assertIn("object-src 'none'", response.headers.get("Content-Security-Policy", ""))
+            self.assertRegex(self.server.certificate_fingerprint, r"^([0-9A-F]{2}:){31}[0-9A-F]{2}$")
             self.assertIn("Android companion", body)
             self.assertIn("viewport", body)
             self.assertIn('aria-label="MySQL IDLE logo"', body)
@@ -116,6 +125,8 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertIn('id="historyForwardBtn"', body)
             self.assertIn('id="templateSelect"', body)
             self.assertIn('id="passwordToggle"', body)
+            self.assertIn('id="tlsVerify"', body)
+            self.assertIn('id="tlsCa"', body)
             self.assertIn('aria-label="Show password"', body)
             self.assertIn('aria-pressed="false"', body)
             self.assertIn("$(" + "'passwordToggle'" + ").onclick", body)
@@ -208,6 +219,52 @@ class MobileCompanionHTTPTests(unittest.TestCase):
         body = json.loads(err.exception.read().decode("utf-8"))
         self.assertIn("limit", body["error"].lower())
 
+
+    def test_non_json_post_is_rejected(self):
+        req = Request(
+            self.base + "/api/pair",
+            data=b"code=123",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with self.assertRaises(HTTPError) as err:
+            urlopen(req, timeout=5, context=self.ssl_context)
+        self.assertEqual(err.exception.code, 415)
+
+    def test_http_origin_is_rejected_for_post(self):
+        req = Request(
+            self.base + "/api/pair",
+            data=json.dumps({"code": self.server.pairing_code}).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Origin": f"http://127.0.0.1:{self.server.port}",
+            },
+            method="POST",
+        )
+        with self.assertRaises(HTTPError) as err:
+            urlopen(req, timeout=5, context=self.ssl_context)
+        self.assertEqual(err.exception.code, 403)
+
+    def test_wildcard_bind_is_rejected(self):
+        with self.assertRaises(ValueError):
+            mobile_companion.MobileCompanionServer(port=0, bind_host="0.0.0.0")
+
+    def test_large_result_file_is_stopped_at_limit(self):
+        original_connect = mobile_companion.pymysql.connect
+        original_limit = mobile_companion.MAX_RESULT_BYTES
+        mobile_companion.pymysql.connect = lambda **kwargs: FakeConnection()
+        mobile_companion.MAX_RESULT_BYTES = 1
+        token = self.pair()
+        try:
+            self.request_json("/api/connect", {"host": "localhost", "port": 3306, "user": "tester"}, token=token)
+            with self.assertRaises(HTTPError) as err:
+                self.request_json("/api/query", {"sql": "SELECT synthetic"}, token=token)
+            self.assertEqual(err.exception.code, 413)
+            body = json.loads(err.exception.read().decode("utf-8"))
+            self.assertIn("512 MiB", body["error"])
+        finally:
+            mobile_companion.pymysql.connect = original_connect
+            mobile_companion.MAX_RESULT_BYTES = original_limit
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
