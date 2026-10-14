@@ -51,6 +51,18 @@ class SQLClassificationTests(unittest.TestCase):
         )
         self.assertTrue(result["requires_confirmation"])
 
+    def test_mysql_executable_comments_are_classified(self):
+        result = classify_sql("/*!80000 DROP TABLE users */")
+        self.assertTrue(result["requires_confirmation"])
+        result = classify_sql("/*M!100100 TRUNCATE TABLE users */")
+        self.assertTrue(result["requires_confirmation"])
+
+    def test_stored_procedure_execution_requires_confirmation(self):
+        result = classify_sql("CALL maintenance_task()")
+        self.assertTrue(result["requires_confirmation"])
+        self.assertEqual(result["risk"], "high")
+
+
     def test_second_statement_is_classified_independently(self):
         result = classify_sql("SELECT 1; DELETE FROM users")
         self.assertTrue(result["requires_confirmation"])
