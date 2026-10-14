@@ -64,13 +64,21 @@ begin
   RemoveUserData := False;
 
   { Preserve per-user preferences unless an interactive user explicitly opts in. }
-  if not WizardSilent then
+  if not UninstallSilent then
     RemoveUserData := MsgBox(
       'Also remove local settings, SQL history (if disk history was enabled), and diagnostic logs for this Windows account?' + #13#10 + #13#10 +
       'Choose No to keep these files. This does not delete MySQL databases, database files, or files outside MySQL IDLE''s own settings locations. The choice to remove settings cannot be undone.',
       mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
 end;
 
+procedure InitializeUninstallProgressForm();
+begin
+  if not UninstallSilent then
+  begin
+    UninstallProgressForm.ProgressBar.Style := npbstMarquee;
+    UninstallProgressForm.StatusLabel.Caption := 'Preparing to remove MySQL IDLE...';
+  end;
+end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
@@ -78,14 +86,14 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
-    if not WizardSilent then
+    if not UninstallSilent then
       UninstallProgressForm.StatusLabel.Caption := 'Removing MySQL IDLE program files and shortcuts...';
   end
   else if CurUninstallStep = usPostUninstall then
   begin
     if RemoveUserData then
     begin
-      if not WizardSilent then
+      if not UninstallSilent then
         UninstallProgressForm.StatusLabel.Caption := 'Removing saved settings and diagnostic logs...';
 
       DataDir := ExpandConstant('{localappdata}\MySQL IDLE');
@@ -96,7 +104,7 @@ begin
       if FileExists(LegacyConfig) and not DeleteFile(LegacyConfig) then
         Log('Could not remove legacy MySQL IDLE settings: ' + LegacyConfig);
     end;
-    if not WizardSilent then
+    if not UninstallSilent then
       UninstallProgressForm.StatusLabel.Caption := 'Uninstall cleanup finished.';
   end;
 end;
