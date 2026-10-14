@@ -753,7 +753,7 @@ class DatabaseWorker(threading.Thread):
             if policy["decision"] != "allow":
                 self.output(
                     f"Feature Governance stopped statement {index}: {policy['reason']} "
-                    f"(risk: {policy['risk']}; fingerprint: {self.governor._digest(stmt)}).\\n",
+                    f"(risk: {policy['risk']}; fingerprint: {self.governor._digest(stmt)}).\n",
                     "error",
                 )
                 # Fail closed: a batch never continues after a policy stop.
