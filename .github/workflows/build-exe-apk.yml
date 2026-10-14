@@ -112,6 +112,32 @@ jobs:
         run: python -m PyInstaller --clean --noconfirm mysql_idle.spec
       - name: Build portable single-file EXE
         run: python -m PyInstaller --clean --noconfirm mysql_idle_portable.spec
+      - name: Smoke-test packaged Windows executables
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "mysqlidle-smoke-appdata"
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          $executables = @(
+            (Resolve-Path "dist\mysql_idle\mysql_idle.exe").Path,
+            (Resolve-Path "dist\MySQLIDLE_Portable.exe").Path
+          )
+          foreach ($exe in $executables) {
+            Write-Host "Launching packaged app: $exe"
+            $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+            try {
+              for ($second = 0; $second -lt 15; $second++) {
+                Start-Sleep -Seconds 1
+                $process.Refresh()
+                if ($process.HasExited) {
+                  throw "Application exited during startup (code $($process.ExitCode)): $exe"
+                }
+              }
+              Write-Host "Startup smoke test passed: $exe"
+            } finally {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
       - name: Sign Windows application executables
         if: env.WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
