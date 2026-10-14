@@ -266,7 +266,7 @@ class MobileCompanionHTTPTests(unittest.TestCase):
                 self.request_json("/api/query", {"sql": "SELECT synthetic"}, token=token)
             self.assertEqual(err.exception.code, 413)
             body = json.loads(err.exception.read().decode("utf-8"))
-            self.assertIn("512 MiB", body["error"])
+            self.assertIn("export limit", body["error"].lower())
         finally:
             mobile_companion.pymysql.connect = original_connect
             mobile_companion.MAX_RESULT_BYTES = original_limit
