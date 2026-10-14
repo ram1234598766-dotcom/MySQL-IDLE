@@ -36,4 +36,4 @@ jobs:
         # B608 is intentionally excluded because this product is an interactive
         # SQL shell. SQL input is its core feature and is passed to the DB driver
         # as a whole statement, not interpolated into a privileged fixed query.
-        run: bandit -q -r -ll -s B608 mysql_idle.py mobile_companion.py
+        run: bandit -q -r -ll -s B608 feature_governor.py mysql_idle.py mobile_companion.py
