@@ -175,7 +175,7 @@ class ConnectionSecurityTests(unittest.TestCase):
         self.assertTrue(worker._credentials["tls_verify"])
         self.assertEqual(worker._credentials["ssl_ca"], str(ca_path))
 
-    def test_mysql_connect_can_disable_tls_verification_only_when_user_unchecks_it(self):
+    def test_mysql_connect_defaults_to_certificate_optional_tls_without_ca(self):
         events = __import__("queue").Queue()
         worker = mysql_idle.DatabaseWorker.__new__(mysql_idle.DatabaseWorker)
         worker.events = events
@@ -199,11 +199,11 @@ class ConnectionSecurityTests(unittest.TestCase):
                 "password": "test-password",
                 "database": None,
                 "ssl_ca": "",
-                "tls_verify": False,
                 "autocommit": True,
             })
         self.assertNotIn("ssl_verify_cert", captured)
         self.assertNotIn("ssl_verify_identity", captured)
+        self.assertNotIn("ssl_ca", captured)
         self.assertFalse(worker._credentials["tls_verify"])
 
 
