@@ -3,6 +3,7 @@ import csv
 import importlib.util
 import io
 import json
+import re
 import ssl
 import sys
 import types
@@ -116,7 +117,11 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
             self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
             self.assertEqual(response.headers.get("Cross-Origin-Resource-Policy"), "same-origin")
-            self.assertIn("object-src 'none'", response.headers.get("Content-Security-Policy", ""))
+            csp = response.headers.get("Content-Security-Policy", "")
+            self.assertIn("object-src 'none'", csp)
+            nonce_match = re.search(r"script-src 'nonce-([^']+)'", csp)
+            self.assertIsNotNone(nonce_match)
+            self.assertIn(f'<script nonce="{nonce_match.group(1)}">', body)
             self.assertRegex(self.server.certificate_fingerprint, r"^([0-9A-F]{2}:){31}[0-9A-F]{2}$")
             self.assertIn("Android companion", body)
             self.assertIn("viewport", body)
