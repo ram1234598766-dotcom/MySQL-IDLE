@@ -8,6 +8,7 @@
 AppId={{8E9A39E8-9F59-4FA3-AD4E-7B0A54A93F11}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://github.com/ram1234598766-dotcom/MySQL-IDLE
 AppSupportURL=https://github.com/ram1234598766-dotcom/MySQL-IDLE/issues
@@ -24,11 +25,13 @@ OutputDir=dist\installer
 OutputBaseFilename=MySQLIDLE-Setup
 Compression=lzma2
 SolidCompression=yes
-WizardStyle=modern
+WizardStyle=modern dynamic polar includetitlebar
 SetupIconFile=assets\mysqlidle.ico
 WizardImageFile=assets\wizard-image.bmp
 WizardSmallImageFile=assets\wizard-small.bmp
-UninstallDisplayIcon={app}\{#MyAppExeName}
+WizardImageFileDynamicDark=assets\wizard-image.bmp
+WizardSmallImageFileDynamicDark=assets\wizard-small.bmp
+UninstallDisplayIcon={app}\_internal\assets\mysqlidle.ico
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
@@ -36,15 +39,14 @@ RestartApplications=no
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
+; The desktop shortcut is always created so the installed app is easy to find.
 
 [Files]
 Source: "{#MyDistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\_internal\assets\mysqlidle.ico"; IconIndex: 0
+Name: "{autodesktop}\MySQL IDLE"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\_internal\assets\mysqlidle.ico"; IconIndex: 0
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch MySQL IDLE"; Flags: nowait postinstall skipifsilent

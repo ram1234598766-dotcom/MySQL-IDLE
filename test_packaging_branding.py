@@ -1,6 +1,7 @@
 """Packaging/UI resource contracts: logos must survive into distributed builds."""
 from pathlib import Path
 import unittest
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent
 
@@ -47,6 +48,25 @@ class PackagingBrandingTests(unittest.TestCase):
                 self.assertIn(expected, source)
         self.assertNotIn('[UninstallDelete]\nType: filesandordirs; Name: "{app}"', source)
         self.assertNotIn("WizardSilent", source)
+
+    def test_installer_creates_desktop_shortcut_with_explicit_shared_icon(self):
+        source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
+        self.assertIn("WizardStyle=modern dynamic polar includetitlebar", source)
+        self.assertIn('UninstallDisplayIcon={app}\\_internal\\assets\\mysqlidle.ico', source)
+        self.assertIn('Name: "{autodesktop}\\MySQL IDLE"', source)
+        self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
+        self.assertNotIn("Tasks: desktopicon", source)
+
+    def test_shared_icon_uses_database_and_sql_prompt_visuals(self):
+        generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
+        svg = (ROOT / "assets" / "mysqlidle-logo.svg").read_text(encoding="utf-8")
+        self.assertIn("def _draw_database", generator)
+        self.assertIn("MYSQL_BLUE", generator)
+        self.assertIn("ORANGE", generator)
+        self.assertIn('aria-label="MySQL IDLE database terminal app icon"', svg)
+        self.assertIn("#4479A1", svg)
+        self.assertIn("#F29111", svg)
+        ET.fromstring(svg)  # Reject malformed SVG before packaging artwork.
 
     def test_android_launcher_and_splash_reference_product_branding(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
