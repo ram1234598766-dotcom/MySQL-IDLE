@@ -254,7 +254,23 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          python3 -c "import os, base64; open(os.path.expandvars('$RUNNER_TEMP/mysqlidle-release.jks'), 'wb').write(base64.b64decode(os.environ['ANDROID_KEYSTORE_BASE64']))"
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          # GitHub secrets can accidentally contain whitespace or omit trailing
+          # Base64 padding. Normalize those harmless variations, but reject
+          # any non-Base64 characters and verify the resulting keystore later.
+          encoded = "".join(os.environ["ANDROID_KEYSTORE_BASE64"].split())
+          encoded = encoded.translate(str.maketrans("-_", "+/"))
+          encoded += "=" * (-len(encoded) % 4)
+          decoded = base64.b64decode(encoded, validate=True)
+          if not decoded:
+              raise SystemExit("Decoded Android keystore is empty.")
+          Path(os.environ["RUNNER_TEMP"], "mysqlidle-release.jks").write_bytes(decoded)
+          print("Android keystore Base64 decoded; contents remain hidden.")
+          PY
           test -s "$RUNNER_TEMP/mysqlidle-release.jks"
       - name: Validate Android signing credentials
         if: env.ANDROID_SIGNING_ENABLED == 'true'
