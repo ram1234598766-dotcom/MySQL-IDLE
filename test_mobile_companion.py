@@ -250,6 +250,13 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             payload = json.loads(blocked.exception.read().decode("utf-8"))
             self.assertTrue(payload["governance_blocked"])
             self.assertIn("Read-only policy", payload["error"])
+
+            with self.assertRaises(HTTPError) as commit_blocked:
+                self.request_json("/api/transaction", {"action": "commit"}, token=token)
+            self.assertEqual(commit_blocked.exception.code, 403)
+            commit_payload = json.loads(commit_blocked.exception.read().decode("utf-8"))
+            self.assertTrue(commit_payload["governance_blocked"])
+            self.assertIn("blocks COMMIT", commit_payload["error"])
         finally:
             mobile_companion.pymysql.connect = original_connect
 
