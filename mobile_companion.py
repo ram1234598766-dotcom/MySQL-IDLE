@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import csv
 import datetime as _dt
+import hashlib
+import ipaddress
 import json
 import os
 import secrets
 import socket
+import ssl
 import tempfile
 import threading
 import time
@@ -18,10 +21,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 from pathlib import Path
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+
 import pymysql
 
 class RequestBodyTooLarge(ValueError):
     """Raised when an HTTP request declares a body beyond the accepted limit."""
+
+
+class ResultTooLarge(ValueError):
+    """Raised before a streamed CSV can exhaust the user's disk."""
 
 
 APP_NAME = "MySQL IDLE Mobile"
@@ -29,6 +41,8 @@ IDLE_TIMEOUT_SECONDS = 30 * 60
 MAX_SESSIONS = 5
 MAX_BODY_BYTES = 512 * 1024
 MAX_SQL_BYTES = 256 * 1024
+MAX_RESULT_BYTES = 512 * 1024 * 1024
+MAX_CONCURRENT_REQUESTS = 24
 FETCH_BATCH_SIZE = 64
 MAX_PREVIEW_ROWS = 150
 MAX_PREVIEW_COLUMNS = 60
@@ -52,11 +66,11 @@ header{padding:18px 16px 12px;border-bottom:1px solid var(--line);position:stick
 </style></head><body>
 <header><div class="rowhead"><div class="brand"><svg class="brand-logo" viewBox="0 0 48 48" role="img" aria-label="MySQL IDLE logo"><rect x="1" y="1" width="46" height="46" rx="11" fill="#0f172a"/><path d="M12 15 21 24 12 33 16.5 37.5 30 24 16.5 10.5Z" fill="#22d3ee"/><rect x="27" y="30" width="10" height="4" rx="1.5" fill="#2563eb"/></svg><div><h1>MySQL IDLE <span class="badge">Android companion</span></h1><div class="sub">Responsive SQL workspace · session-only credentials</div></div></div><div id="connectionBadge" class="badge">Not connected</div></div></header>
 <main class="wrap">
-<section id="pairPanel" class="panel"><h2>Pair with desktop</h2><p class="muted">In the desktop app, open Tools → Android / Mobile Companion and enter the 10-digit code shown there. Both devices must be on the same trusted Wi-Fi network.</p><div class="field"><label for="pairCode">Temporary pairing code</label><input id="pairCode" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="10-digit code from desktop"></div><div class="actions"><button class="primary" id="pairBtn">Pair device</button></div><div id="pairStatus" class="status" style="margin-top:12px">Pairing expires when the desktop companion stops.</div></section>
-<section id="connectionPanel" class="panel connection hidden"><div class="rowhead"><h2>MySQL connection</h2><button id="disconnectBtn" class="danger">Disconnect</button></div><div class="grid"><div class="field"><label for="host">Host (as seen by desktop)</label><input id="host" value="localhost" autocomplete="off"></div><div class="field"><label for="port">Port</label><input id="port" value="3306" inputmode="numeric"></div><div class="field"><label for="user">Username</label><input id="user" autocomplete="username"></div><div class="field"><label for="password">Password (not saved)</label><div class="secret-control"><input id="password" type="password" autocomplete="current-password" aria-describedby="passwordHint"><button id="passwordToggle" type="button" aria-label="Show password" aria-pressed="false">Show</button></div><span id="passwordHint" class="hint">Hidden by default and cleared after a successful connection.</span></div><div class="field wide"><label for="database">Database (optional)</label><input id="database" autocomplete="off"></div><div class="field wide"><label><input id="autocommit" type="checkbox" checked style="width:auto;margin-right:8px"> Auto-commit each statement</label></div></div><div class="actions"><button class="primary" id="connectBtn">Connect to MySQL</button></div><div class="hint">The desktop computer connects to MySQL. For a local database on that computer, use localhost.</div><div id="dbStatus" class="status" style="margin-top:10px">Not connected</div></section>
+<section id="pairPanel" class="panel"><h2>Pair with desktop</h2><p class="muted">In the desktop app, open Tools → Android / Mobile Companion and enter the 10-digit code plus the SHA-256 certificate fingerprint shown there. This verifies the desktop before credentials are sent. Keep both devices on the same trusted private network.</p><div class="field"><label for="pairCode">Temporary pairing code</label><input id="pairCode" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="10-digit code from desktop"></div><div class="actions"><button class="primary" id="pairBtn">Pair device</button></div><div id="pairStatus" class="status" style="margin-top:12px">Pairing expires when the desktop companion stops.</div></section>
+<section id="connectionPanel" class="panel connection hidden"><div class="rowhead"><h2>MySQL connection</h2><button id="disconnectBtn" class="danger">Disconnect</button></div><div class="grid"><div class="field"><label for="host">Host (as seen by desktop)</label><input id="host" value="localhost" autocomplete="off"></div><div class="field"><label for="port">Port</label><input id="port" value="3306" inputmode="numeric"></div><div class="field"><label for="user">Username</label><input id="user" autocomplete="username"></div><div class="field"><label for="password">Password (not saved)</label><div class="secret-control"><input id="password" type="password" autocomplete="current-password" aria-describedby="passwordHint"><button id="passwordToggle" type="button" aria-label="Show password" aria-pressed="false">Show</button></div><span id="passwordHint" class="hint">Hidden by default and cleared after a successful connection.</span></div><div class="field wide"><label><input id="tlsVerify" type="checkbox" checked style="width:auto;margin-right:8px"> Require verified TLS to MySQL (recommended)</label><span class="hint">The MySQL server must present a certificate trusted by the desktop system or the CA file below.</span></div><div class="field wide"><label for="tlsCa">MySQL CA certificate path on desktop (optional)</label><input id="tlsCa" autocomplete="off" spellcheck="false" placeholder="C:\\certs\\mysql-ca.pem"><span class="hint">This path is read on the desktop computer, not on the phone.</span></div><div class="field wide"><label for="database">Database (optional)</label><input id="database" autocomplete="off"></div><div class="field wide"><label><input id="autocommit" type="checkbox" checked style="width:auto;margin-right:8px"> Auto-commit each statement</label></div></div><div class="actions"><button class="primary" id="connectBtn">Connect to MySQL</button></div><div class="hint">The desktop computer connects to MySQL. For a local database on that computer, use localhost.</div><div id="dbStatus" class="status" style="margin-top:10px">Not connected</div></section>
 <section id="editorPanel" class="panel editor hidden"><div class="rowhead"><h2>SQL editor</h2><span class="hint">Ctrl/⌘ + Enter to run</span></div><textarea id="sql" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="SQL editor" placeholder="SELECT VERSION();"></textarea><div class="actions"><button id="runBtn" class="primary" disabled>Run SQL</button><button id="clearBtn">Clear</button><button id="historyBackBtn" disabled>Previous</button><button id="historyForwardBtn" disabled>Next</button><span id="historyCount" class="hint">0/50 queries in memory</span><button id="commitBtn" disabled>Commit</button><button id="rollbackBtn" disabled>Rollback</button></div><div class="actions"><select id="templateSelect" aria-label="SQL template"><option value="">Quick SQL template…</option><option value="SELECT VERSION();">Server version</option><option value="SELECT DATABASE();">Current database</option><option value="SHOW DATABASES;">List databases</option><option value="SHOW TABLES;">List tables</option><option value="SELECT NOW();">Current server time</option></select><button id="insertTemplateBtn">Insert template</button></div><div id="queryStatus" class="status" style="margin-top:12px">Ready.</div></section>
 <section id="resultPanel" class="panel result hidden"><div class="rowhead"><h2>Result</h2><button id="exportBtn" disabled>Export complete CSV</button></div><div id="metrics" class="metrics"></div><div id="resultTable" class="table-wrap" role="region" aria-label="Query results" tabindex="0"><div class="muted" style="padding:12px">Run a query to see results.</div></div></section>
-</main><footer>Use only on a trusted private network. HTTP is not encrypted; never expose this port to the public internet.</footer>
+</main><footer>HTTPS is certificate-pinned between the app and desktop. Use a trusted private network; never expose this service to the public internet.</footer>
 <script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);let sessionToken=sessionStorage.getItem('mysqlIdleMobileSession')||'';let lastResult=false;let connected=false;let queryRunning=false;const queryHistory=[];let historyIndex=0;let historyDraft='';
@@ -72,7 +86,7 @@ function clearQueryHistory(){queryHistory.length=0;historyIndex=0;historyDraft='
 async function api(path,data,method='POST'){const headers={};if(method!=='GET')headers['Content-Type']='application/json';if(sessionToken)headers.Authorization='Bearer '+sessionToken;const response=await fetch(path,{method,headers,body:method==='GET'?undefined:JSON.stringify(data||{})});let json={};try{json=await response.json()}catch{}if(response.status===401){const message=json.error||'Pairing expired. Pair again.';clearSession();throw new Error(message)}if(!response.ok||json.ok===false)throw new Error(json.error||('Request failed ('+response.status+')'));return json;}
 $('passwordToggle').onclick=()=>{const reveal=$('password').type==='password';$('password').type=reveal?'text':'password';$('passwordToggle').textContent=reveal?'Hide':'Show';$('passwordToggle').setAttribute('aria-pressed',String(reveal));$('passwordToggle').setAttribute('aria-label',reveal?'Hide password':'Show password');};
 $('pairBtn').onclick=async()=>{const btn=$('pairBtn');btn.disabled=true;try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:$('pairCode').value.trim()})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Pairing failed');sessionToken=j.token;sessionStorage.setItem('mysqlIdleMobileSession',sessionToken);showApp(true);status('dbStatus','Not connected');$('connectionBadge').textContent='Paired · not connected';status('pairStatus','Device paired. Connect to MySQL below.','good');}catch(e){status('pairStatus',e.message,'bad')}finally{btn.disabled=false}};
-$('connectBtn').onclick=async()=>{const b=$('connectBtn');b.disabled=true;status('dbStatus','Connecting…');try{const r=await api('/api/connect',{host:$('host').value.trim(),port:$('port').value.trim(),user:$('user').value,password:$('password').value,database:$('database').value.trim(),autocommit:$('autocommit').checked});setConnectedState(true);lastResult=false;$('resultPanel').classList.add('hidden');$('resultTable').textContent='Run a query to see results.';status('dbStatus','Connected to '+r.serverVersion,'good');$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('password').value='';updateActionStates();}catch(e){status('dbStatus',e.message+(connected?' The previous connection is still active.':''),'bad');}finally{b.disabled=false;updateActionStates()}};
+$('connectBtn').onclick=async()=>{const b=$('connectBtn');b.disabled=true;status('dbStatus','Connecting…');try{const r=await api('/api/connect',{host:$('host').value.trim(),port:$('port').value.trim(),user:$('user').value,password:$('password').value,database:$('database').value.trim(),autocommit:$('autocommit').checked,tlsVerify:$('tlsVerify').checked,sslCa:$('tlsCa').value.trim()});setConnectedState(true);lastResult=false;$('resultPanel').classList.add('hidden');$('resultTable').textContent='Run a query to see results.';status('dbStatus','Connected to '+r.serverVersion,'good');$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('password').value='';updateActionStates();}catch(e){status('dbStatus',e.message+(connected?' The previous connection is still active.':''),'bad');}finally{b.disabled=false;updateActionStates()}};
 $('runBtn').onclick=async()=>{const sql=$('sql').value.trim();if(!sql){status('queryStatus','Enter a SQL statement first.');return}rememberQuery(sql);queryRunning=true;updateActionStates();lastResult=false;updateActionStates();status('queryStatus','Running query…');$('metrics').replaceChildren();$('resultTable').textContent='Query running…';$('resultPanel').classList.remove('hidden');try{const r=await api('/api/query',{sql});status('queryStatus',r.message||'Query completed.','good');if(r.database!==undefined)$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('metrics').replaceChildren();[['Rows',r.rowCount],['Time',r.elapsed.toFixed(3)+' s'],['Mode',r.hasResult?'result set':'statement']].forEach(([k,v])=>{const span=document.createElement('span');const strong=document.createElement('strong');strong.textContent=k+': ';span.append(strong,document.createTextNode(String(v)));$('metrics').append(span)});renderTable(r.columns||[],r.preview||[]);lastResult=!!r.hasResult;$('resultPanel').classList.remove('hidden');if(r.truncated||r.truncatedColumns){const notes=[];if(r.truncated)notes.push(`first ${r.preview.length} rows of ${r.rowCount}`);if(r.truncatedColumns)notes.push(`first ${r.columns.length} of ${r.totalColumns} columns`);status('queryStatus',`Preview limited to ${notes.join(' and ')}. Export contains the complete result.`,'good');}}catch(e){status('queryStatus',e.message,'bad')}finally{queryRunning=false;updateActionStates()}};
 function renderTable(columns,rows){const wrap=$('resultTable');wrap.replaceChildren();if(!columns.length){wrap.textContent='Statement completed without a result set.';return}const table=document.createElement('table'),thead=document.createElement('thead'),hr=document.createElement('tr');columns.forEach(c=>{const th=document.createElement('th');th.scope='col';th.textContent=c;hr.append(th)});thead.append(hr);table.append(thead);const body=document.createElement('tbody');rows.forEach(row=>{const tr=document.createElement('tr');row.forEach(v=>{const td=document.createElement('td');if(v===null){td.textContent='NULL';td.className='null'}else td.textContent=String(v);tr.append(td)});body.append(tr)});table.append(body);wrap.append(table);if(!rows.length){const p=document.createElement('div');p.className='muted';p.style.padding='12px';p.textContent='Empty result set.';wrap.append(p)}}
 $('exportBtn').onclick=async()=>{try{const response=await fetch('/api/export',{headers:{Authorization:'Bearer '+sessionToken}});if(response.status===401){clearSession();throw new Error('Pairing expired. Pair again.')}if(!response.ok){let message='Export unavailable ('+response.status+').';try{const body=await response.json();message=body.error||message}catch{}throw new Error(message)}const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='mysql_idle_result.csv';document.body.append(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){status('queryStatus',e.message,'bad')}};
@@ -116,15 +130,100 @@ def _preview_value(value):
 
 
 def _local_ip():
+    """Choose a private LAN IPv4 address; never advertise or bind a public IP."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # UDP connect selects a route; it does not send application data.
         sock.connect(("192.0.2.1", 9))
-        return sock.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
+        candidate = ipaddress.ip_address(sock.getsockname()[0])
+        if candidate.version == 4 and candidate.is_private and not candidate.is_loopback and not candidate.is_link_local:
+            return str(candidate)
+    except (OSError, ValueError):
+        pass
     finally:
         sock.close()
+    return "127.0.0.1"
+
+
+def _create_tls_identity(directory, bind_host):
+    """Create a short-lived self-signed TLS certificate whose pin is shown to the user."""
+    now = _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, "MySQL IDLE Mobile Companion"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "MySQL IDLE"),
+    ])
+    san_names = [x509.DNSName("localhost"), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]
+    bind_ip = ipaddress.ip_address(bind_host)
+    if bind_ip not in [entry.value for entry in san_names if isinstance(entry, x509.IPAddress)]:
+        san_names.append(x509.IPAddress(bind_ip))
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - _dt.timedelta(minutes=5))
+        .not_valid_after(now + _dt.timedelta(days=30))
+        .add_extension(x509.SubjectAlternativeName(san_names), critical=False)
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    cert_path = Path(directory) / "mobile-companion-cert.pem"
+    key_path = Path(directory) / "mobile-companion-key.pem"
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ))
+    if os.name != "nt":
+        os.chmod(cert_path, 0o600)
+        os.chmod(key_path, 0o600)
+    fingerprint = hashlib.sha256(cert.public_bytes(serialization.Encoding.DER)).hexdigest().upper()
+    fingerprint = ":".join(fingerprint[i:i + 2] for i in range(0, len(fingerprint), 2))
+    return cert_path, key_path, fingerprint
+
+
+class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """Bound worker threads so a burst of clients cannot exhaust desktop resources."""
+    daemon_threads = True
+    block_on_close = False
+    request_queue_size = 16
+
+    def __init__(self, server_address, request_handler):
+        self._request_slots = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
+        super().__init__(server_address, request_handler)
+
+    def process_request(self, request, client_address):
+        if not self._request_slots.acquire(blocking=False):
+            body = b"Service busy. Try again shortly."
+            response = (
+                b"HTTP/1.1 503 Service Unavailable\\r\\n"
+                b"Connection: close\\r\\n"
+                b"Content-Type: text/plain; charset=utf-8\\r\\n"
+                + f"Content-Length: {len(body)}\\r\\n\\r\\n".encode("ascii")
+                + body
+            )
+            try:
+                request.sendall(response)
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._request_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._request_slots.release()
 
 
 class _MobileSession:
@@ -162,7 +261,17 @@ class _MobileSession:
 class MobileCompanionServer:
     """Start/stop the mobile companion. Public-LAN access is never automatic."""
 
-    def __init__(self, port=8765, bind_host="0.0.0.0"):
+    def __init__(self, port=8765, bind_host=None):
+        if bind_host is None:
+            bind_host = _local_ip()
+            if bind_host == "127.0.0.1":
+                raise RuntimeError("No private LAN IPv4 address was found. Connect to a trusted private network, then enable the mobile companion.")
+        try:
+            bind_address = ipaddress.ip_address(str(bind_host))
+        except ValueError as exc:
+            raise ValueError("The mobile companion must bind to a private numeric IPv4 address.") from exc
+        if bind_address.version != 4 or bind_address.is_unspecified or not (bind_address.is_private or bind_address.is_loopback):
+            raise ValueError("For safety, the mobile companion will not bind to a wildcard or public IP address.")
         self.pairing_code = f"{secrets.randbelow(10**10):010d}"
         self.sessions = {}
         self.sessions_lock = threading.RLock()
@@ -198,7 +307,10 @@ class MobileCompanionServer:
                 self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("X-Frame-Options", "DENY")
                 self.send_header("Referrer-Policy", "no-referrer")
-                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+                self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+                self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+                self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), usb=()")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
                 if length is not None:
                     self.send_header("Content-Length", str(length))
 
@@ -225,22 +337,38 @@ class MobileCompanionServer:
                     port = parsed.port
                 except ValueError:
                     return False
-                if port is not None and port != owner.httpd.server_address[1]:
+                if (
+                    not host
+                    or parsed.username is not None
+                    or parsed.password is not None
+                    or parsed.path
+                    or parsed.query
+                    or parsed.fragment
+                ):
                     return False
-                return host in owner.allowed_hosts
+                return port == owner.httpd.server_address[1] and host in owner.allowed_hosts
 
             def _origin_allowed(self):
                 origin = self.headers.get("Origin")
                 if not origin:
                     return True
-                parsed = urlparse(origin)
-                host = (parsed.hostname or "").lower()
                 try:
-                    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+                    parsed = urlparse(origin)
+                    host = (parsed.hostname or "").lower()
+                    port = parsed.port
                 except ValueError:
                     return False
                 local_port = owner.httpd.server_address[1]
-                return parsed.scheme == "http" and port == local_port and host in owner.allowed_hosts
+                return (
+                    parsed.scheme == "https"
+                    and parsed.username is None
+                    and parsed.password is None
+                    and parsed.path in ("", "/")
+                    and not parsed.query
+                    and not parsed.fragment
+                    and port == local_port
+                    and host in owner.allowed_hosts
+                )
 
             def _read_json(self):
                 try:
@@ -324,6 +452,10 @@ class MobileCompanionServer:
                     self._json(403, {"ok": False, "error": "Request origin rejected."})
                     return
                 path = urlparse(self.path).path
+                content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                if content_type != "application/json":
+                    self._json(415, {"ok": False, "error": "Content-Type must be application/json."})
+                    return
                 try:
                     data = self._read_json()
                 except RequestBodyTooLarge as exc:
@@ -398,10 +530,22 @@ class MobileCompanionServer:
                 except ValueError as exc:
                     self._json(400, {"ok": False, "error": str(exc) if str(exc) else "Port must be 1–65535."})
                     return
+                ssl_ca = str(data.get("sslCa", "")).strip()[:1024]
+                tls_verify = bool(data.get("tlsVerify", True))
+                if ssl_ca and not os.path.isfile(ssl_ca):
+                    self._json(400, {"ok": False, "error": "The MySQL CA certificate file was not found on the desktop."})
+                    return
+                connection_options = {
+                    "host": host, "port": port, "user": user, "password": password,
+                    "database": database, "charset": "utf8mb4", "autocommit": bool(data.get("autocommit", True)),
+                    "connect_timeout": 8, "read_timeout": 90, "write_timeout": 15,
+                }
+                if tls_verify:
+                    connection_options.update(ssl_verify_cert=True, ssl_verify_identity=True)
+                if ssl_ca:
+                    connection_options["ssl_ca"] = ssl_ca
                 try:
-                    conn = pymysql.connect(host=host, port=port, user=user, password=password,
-                        database=database, charset="utf8mb4", autocommit=bool(data.get("autocommit", True)),
-                        connect_timeout=8, read_timeout=90, write_timeout=15)
+                    conn = pymysql.connect(**connection_options)
                     version = str(conn.get_server_info())
                 except Exception as exc:
                     self._json(400, {"ok": False, "error": _database_error(exc)})
@@ -474,6 +618,8 @@ class MobileCompanionServer:
                                                 if count < MAX_PREVIEW_ROWS:
                                                     preview.append([_preview_value(v) for v in row[:MAX_PREVIEW_COLUMNS]])
                                                 count += 1
+                                            if os.path.getsize(path) > MAX_RESULT_BYTES:
+                                                raise ResultTooLarge
                                 except Exception:
                                     try:
                                         os.unlink(path)
@@ -502,6 +648,11 @@ class MobileCompanionServer:
                                     "rowCount": max(0, affected), "database": session.current_db or "",
                                     "truncated": False, "elapsed": elapsed,
                                     "message": f"Statement completed; {affected} row(s) affected in {elapsed:.3f} sec."})
+                    except ResultTooLarge:
+                        self._json(413, {
+                            "ok": False,
+                            "error": f"Result exceeds the {MAX_RESULT_BYTES // (1024 * 1024)} MiB export limit. Add a LIMIT clause or export a smaller result.",
+                        })
                     except Exception as exc:
                         self._json(400, {"ok": False, "error": _database_error(exc)})
 
@@ -521,17 +672,20 @@ class MobileCompanionServer:
                         self._json(400, {"ok": False, "error": _database_error(exc)})
 
         try:
-            self.httpd = ThreadingHTTPServer((self.bind_host, self.port_requested), Handler)
+            self.httpd = _BoundedThreadingHTTPServer((self.bind_host, self.port_requested), Handler)
         except OSError:
             # Avoid a dead end if another app already uses the default port.
-            self.httpd = ThreadingHTTPServer((self.bind_host, 0), Handler)
-        self.httpd.daemon_threads = True
-        self.httpd.block_on_close = False
-        bound_port = self.httpd.server_address[1]
-        self.port = bound_port
-        local_ip = _local_ip()
-        self.url = f"http://{local_ip}:{self.port}/"
-        self.allowed_hosts = {"localhost", "127.0.0.1", local_ip.lower()}
+            self.httpd = _BoundedThreadingHTTPServer((self.bind_host, 0), Handler)
+        cert_path, key_path, self.certificate_fingerprint = _create_tls_identity(
+            self.temp_dir.name, self.bind_host
+        )
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        tls_context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
+        self.httpd.socket = tls_context.wrap_socket(self.httpd.socket, server_side=True)
+        self.port = self.httpd.server_address[1]
+        self.url = f"https://{self.bind_host}:{self.port}/"
+        self.allowed_hosts = {"localhost", "127.0.0.1", self.bind_host.lower()}
         self._running = False
         self._closed = False
 
