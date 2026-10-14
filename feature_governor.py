@@ -46,7 +46,16 @@ def _tokens(sql: str) -> list[str]:
             continue
         if sql.startswith("/*", i):
             end = sql.find("*/", i + 2)
-            i = n if end < 0 else end + 2
+            if end < 0:
+                break
+            # MySQL /*! ... */ and MariaDB /*M! ... */ comments can execute
+            # SQL on the server; inspect their payload instead of discarding it.
+            if sql.startswith("/*!", i) or sql.startswith("/*M!", i):
+                payload_start = i + (3 if sql.startswith("/*!", i) else 4)
+                while payload_start < end and sql[payload_start].isdigit():
+                    payload_start += 1
+                result.extend(_tokens(sql[payload_start:end]))
+            i = end + 2
             continue
         if ch in ("'", '"', chr(96)):
             quote = ch
@@ -121,6 +130,8 @@ def classify_sql(sql: str) -> dict[str, str | bool]:
     top_level_words = set().union(*top_level_groups) if top_level_groups else set()
     if top_level_words & _DESTRUCTIVE_WORDS:
         high_reasons.append("DDL can irreversibly change or remove database objects.")
+    if "CALL" in top_level_words:
+        high_reasons.append("Stored procedures may perform broad or privileged database changes.")
     if top_level_words & _ADMIN_WORDS:
         high_reasons.append("Administrative or file-related SQL can affect server-wide state.")
     if {"OUTFILE", "DUMPFILE", "PERSIST"} & top_level_words:
@@ -142,7 +153,12 @@ def classify_sql(sql: str) -> dict[str, str | bool]:
 
     reason = " ".join(dict.fromkeys(high_reasons))
     if high_reasons:
-        category = "administrative" if top_level_words & _ADMIN_WORDS or ("GLOBAL" in top_level_words and "SET" in top_level_words) else "destructive"
+        if top_level_words & _ADMIN_WORDS or ("GLOBAL" in top_level_words and "SET" in top_level_words):
+            category = "administrative"
+        elif top_level_words & _DESTRUCTIVE_WORDS:
+            category = "destructive"
+        else:
+            category = "high-impact"
         return {"category": category, "risk": "high", "reason": reason,
                 "mutation": mutation, "requires_confirmation": True}
     if mutation:
@@ -169,7 +185,13 @@ class FeatureGovernor:
 
     @staticmethod
     def _digest(sql: str) -> str:
-        return hashlib.sha256(sql.encode("utf-8", "replace")).hexdigest()[:16]
+        """Full digest for approval binding; never store this full value in the audit log."""
+        return hashlib.sha256(sql.encode("utf-8", "replace")).hexdigest()
+
+    @classmethod
+    def fingerprint(cls, sql: str) -> str:
+        """Short, user-facing audit fingerprint."""
+        return cls._digest(sql)[:16]
 
     @property
     def read_only(self) -> bool:
@@ -254,7 +276,7 @@ class FeatureGovernor:
             "category": str(category or assessment["category"])[:32],
             "risk": str(risk or assessment["risk"])[:16],
             "reason": str(reason)[:240],
-            "statement_digest": self._digest(sql),
+            "statement_digest": self.fingerprint(sql),
         }
         with self._lock:
             self._audit.append(event)
