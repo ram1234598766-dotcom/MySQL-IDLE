@@ -212,7 +212,7 @@ jobs:
           $installedExe = Join-Path $installDir "mysql_idle.exe"
           if (!(Test-Path $installedExe)) { throw "Installer did not place the desktop executable." }
           if (!(Test-Path $desktopShortcut)) { throw "Installer did not create the MySQL IDLE desktop shortcut." }
-          $expectedIcon = Join-Path $installDir "assets\mysqlidle.ico"
+          $expectedIcon = Join-Path $installDir "_internal\assets\mysqlidle.ico"
           if (!(Test-Path $expectedIcon)) { throw "Installer did not install the shared ICO asset." }
           $shell = New-Object -ComObject WScript.Shell
           $shortcut = $shell.CreateShortcut($desktopShortcut)
