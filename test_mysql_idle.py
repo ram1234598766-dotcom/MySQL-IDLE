@@ -114,7 +114,10 @@ class SplitSQLTests(unittest.TestCase):
             legacy = root / "old.json"
             target = root / "app" / "settings.json"
             legacy.write_text(json.dumps({
-                "last_connection": {"host": "localhost", "user": "tester", "password": "legacy-secret"},
+                "last_connection": {
+                    "host": "localhost", "user": "tester", "password": "legacy-secret",
+                    "tls_verify": True,
+                },
                 "history": ["SELECT 1;"],
             }), encoding="utf-8")
             with patch.object(mysql_idle, "CONFIG_PATH", target), patch.object(mysql_idle, "LEGACY_CONFIG_PATH", legacy), patch.object(mysql_idle, "SAVE_HISTORY", False):
@@ -123,6 +126,8 @@ class SplitSQLTests(unittest.TestCase):
             self.assertFalse(legacy.exists())
             self.assertEqual(cfg["last_connection"]["user"], "tester")
             self.assertNotIn("password", cfg["last_connection"])
+            self.assertFalse(cfg["last_connection"]["tls_verify"])
+            self.assertEqual(cfg["last_connection"]["tls_verify_setting_version"], 2)
             self.assertNotIn("history", cfg)
             migrated = target.read_text(encoding="utf-8")
             self.assertNotIn("legacy-secret", migrated)
