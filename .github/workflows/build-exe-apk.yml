@@ -542,7 +542,7 @@ jobs:
           fi
           booted=false
           for attempt in $(seq 1 60); do
-            if [[ "$(timeout 15s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')" == "1" ]]; then
+            if [[ "$(timeout 15s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
               booted=true
               break
             fi
@@ -560,7 +560,7 @@ jobs:
           timeout 20s adb shell am force-stop com.mysqlidle.mobile
           timeout 30s adb shell am start -W -n com.mysqlidle.mobile/.MainActivity
           sleep 2
-          app_pid="$(timeout 15s adb shell pidof com.mysqlidle.mobile 2>/dev/null | tr -d '\\r')"
+          app_pid="$(timeout 15s adb shell pidof com.mysqlidle.mobile 2>/dev/null | tr -d '\r')"
           if [[ -z "$app_pid" ]]; then
             adb logcat -d -t 1200
             echo "APK process did not remain alive after launch." >&2
