@@ -9,6 +9,13 @@ AppId={{8E9A39E8-9F59-4FA3-AD4E-7B0A54A93F11}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppPublisherURL=https://github.com/ram1234598766-dotcom/MySQL-IDLE
+AppSupportURL=https://github.com/ram1234598766-dotcom/MySQL-IDLE/issues
+AppUpdatesURL=https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=MySQL IDLE SQL Workspace
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
 DefaultDirName={localappdata}\Programs\MySQL IDLE
 DefaultGroupName=MySQL IDLE
 DisableProgramGroupPage=yes
@@ -30,7 +37,7 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
 
 [Files]
 Source: "{#MyDistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
