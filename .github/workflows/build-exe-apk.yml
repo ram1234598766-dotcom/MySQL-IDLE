@@ -308,10 +308,12 @@ jobs:
               echo "A signed Android APK is required for release publication."
               if [[ ${#missing[@]} -gt 0 ]]; then
                 echo "Missing Actions secret names (values are never displayed): ${missing[*]}"
-                echo "::warning::Missing Android signing Actions secret names: ${missing[*]}"
               fi
               echo "Set the missing secrets documented in SIGNING.md, then run this workflow again."
             } >> "$GITHUB_STEP_SUMMARY"
+            if [[ ${#missing[@]} -gt 0 ]]; then
+              echo "::warning::Missing Android signing Actions secret names: ${missing[*]}"
+            fi
           fi
       - name: Download signed Android artifact
         if: steps.signing.outputs.ready == 'true'
