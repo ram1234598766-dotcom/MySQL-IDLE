@@ -184,6 +184,75 @@ class MobileCompanionHTTPTests(unittest.TestCase):
         finally:
             mobile_companion.pymysql.connect = original_connect
 
+    def test_high_impact_mobile_query_requires_single_use_approval(self):
+        original_connect = mobile_companion.pymysql.connect
+        mobile_companion.pymysql.connect = lambda **kwargs: FakeConnection()
+        token = self.pair()
+        try:
+            self.request_json("/api/connect", {
+                "host": "localhost", "port": 3306, "user": "tester",
+            }, token=token)
+            req = Request(
+                self.base + "/api/query",
+                data=json.dumps({"sql": "DROP TABLE sample"}).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
+                method="POST",
+            )
+            with self.assertRaises(HTTPError) as challenge_error:
+                urlopen(req, timeout=5, context=self.ssl_context)
+            self.assertEqual(challenge_error.exception.code, 409)
+            challenge = json.loads(challenge_error.exception.read().decode("utf-8"))
+            self.assertTrue(challenge["approval_required"])
+            self.assertTrue(challenge["approvalToken"])
+            self.assertIn("irreversibly", challenge["reason"])
+
+            status, result = self.request_json(
+                "/api/query",
+                {"sql": "DROP TABLE sample", "approvalToken": challenge["approvalToken"]},
+                token=token,
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(result["ok"])
+
+            replay = Request(
+                self.base + "/api/query",
+                data=json.dumps({
+                    "sql": "DROP TABLE sample",
+                    "approvalToken": challenge["approvalToken"],
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
+                method="POST",
+            )
+            with self.assertRaises(HTTPError) as replay_error:
+                urlopen(replay, timeout=5, context=self.ssl_context)
+            self.assertEqual(replay_error.exception.code, 403)
+        finally:
+            mobile_companion.pymysql.connect = original_connect
+
+    def test_read_only_governance_blocks_mobile_mutations(self):
+        original_connect = mobile_companion.pymysql.connect
+        mobile_companion.pymysql.connect = lambda **kwargs: FakeConnection()
+        self.server.governor.set_policy(read_only=True)
+        token = self.pair()
+        try:
+            self.request_json("/api/connect", {
+                "host": "localhost", "port": 3306, "user": "tester",
+            }, token=token)
+            req = Request(
+                self.base + "/api/query",
+                data=json.dumps({"sql": "UPDATE users SET active=0 WHERE id=7"}).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
+                method="POST",
+            )
+            with self.assertRaises(HTTPError) as blocked:
+                urlopen(req, timeout=5, context=self.ssl_context)
+            self.assertEqual(blocked.exception.code, 403)
+            payload = json.loads(blocked.exception.read().decode("utf-8"))
+            self.assertTrue(payload["governance_blocked"])
+            self.assertIn("Read-only policy", payload["error"])
+        finally:
+            mobile_companion.pymysql.connect = original_connect
+
     def test_wide_results_keep_preview_bounded_but_export_all_columns(self):
         original_connect = mobile_companion.pymysql.connect
         mobile_companion.pymysql.connect = lambda **kwargs: FakeConnection()
