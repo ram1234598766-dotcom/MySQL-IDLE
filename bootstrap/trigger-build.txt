@@ -4,3 +4,4 @@ CI run: build and verify the release-signed Android APK using repository Actions
 CI run: validate the updated Android keystore secret in a fresh workflow run and publish the signed APK if verification passes.
 CI run: retry Android keystore restoration after the latest secret correction and verify the signed APK.
 CI run: revalidate store password after the latest Actions secret update; verify APK signature and release publication.
+CI run: confirm the encrypted Android signing backup restores the same signing identity on a fresh build.
