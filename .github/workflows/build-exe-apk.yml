@@ -496,6 +496,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
           mkdir -p dist
           cp "$apk" dist/MySQLIDLE-Mobile-release.apk
+          echo "APK_SMOKE_PATH=dist/MySQLIDLE-Mobile-release.apk" >> "$GITHUB_ENV"
           if [[ "${ANDROID_KEYSTORE_WAS_REPLACED:-false}" == "true" ]]; then
             openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
               -in "$RUNNER_TEMP/mysqlidle-release.jks" \
