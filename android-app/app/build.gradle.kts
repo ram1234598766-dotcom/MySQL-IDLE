@@ -18,12 +18,12 @@ val ciBuildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.takeIf { 
 
 android {
     namespace = "com.mysqlidle.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.mysqlidle.mobile"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = ciBuildNumber ?: 1
         versionName = ciBuildNumber?.let { "3.0.0+$it" } ?: "3.0.0"
     }
