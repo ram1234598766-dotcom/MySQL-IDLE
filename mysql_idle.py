@@ -375,8 +375,46 @@ def save_config(cfg):
 
 
 def _process_is_running(pid):
+    """Return whether a process is live without using POSIX signal-0 semantics on Windows."""
     if pid <= 0:
         return False
+    if os.name == "nt":
+        # Windows os.kill(pid, 0) is not a reliable POSIX-style liveness probe.
+        # Query the process handle instead, conservatively treating unknown access
+        # errors as "possibly running" so cleanup never deletes an active spool.
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
+            ERROR_ACCESS_DENIED = 5
+            ERROR_INVALID_PARAMETER = 87
+            ERROR_NOT_FOUND = 1168
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            open_process = kernel32.OpenProcess
+            open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+            open_process.restype = wintypes.HANDLE
+            handle = open_process(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                error = ctypes.get_last_error()
+                if error in (ERROR_INVALID_PARAMETER, ERROR_NOT_FOUND):
+                    return False
+                return True if error == ERROR_ACCESS_DENIED else True
+            try:
+                exit_code = wintypes.DWORD()
+                get_exit_code = kernel32.GetExitCodeProcess
+                get_exit_code.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+                get_exit_code.restype = wintypes.BOOL
+                if not get_exit_code(handle, ctypes.byref(exit_code)):
+                    return True
+                return exit_code.value == STILL_ACTIVE
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            # Cleanup is destructive: preserve the directory if liveness is unknown.
+            return True
     try:
         os.kill(pid, 0)
         return True
