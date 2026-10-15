@@ -388,7 +388,6 @@ def _process_is_running(pid):
 
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
             STILL_ACTIVE = 259
-            ERROR_ACCESS_DENIED = 5
             ERROR_INVALID_PARAMETER = 87
             ERROR_NOT_FOUND = 1168
 
@@ -401,7 +400,7 @@ def _process_is_running(pid):
                 error = ctypes.get_last_error()
                 if error in (ERROR_INVALID_PARAMETER, ERROR_NOT_FOUND):
                     return False
-                return True if error == ERROR_ACCESS_DENIED else True
+                return True
             try:
                 exit_code = wintypes.DWORD()
                 get_exit_code = kernel32.GetExitCodeProcess
