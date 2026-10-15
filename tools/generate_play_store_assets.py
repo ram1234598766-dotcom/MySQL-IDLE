@@ -31,10 +31,11 @@ def bg(size,light=False):
     return im
 
 def logo(path,size=512):
-    """Resize the supplied icon without redesigning, masking, or adding artwork."""
+    """Resize the supplied icon directly, preserving RGBA pixels and aspect handling as requested."""
+    target = size if isinstance(size, tuple) else (size, size)
     with Image.open(path) as src:
         src.load()
-        return src.convert("RGBA").resize((size,size),Image.Resampling.LANCZOS)
+        return src.convert("RGBA").resize(target, Image.Resampling.LANCZOS)
 
 def box(d,xy,fill=PANEL,outline=LINE,r=18,w=2): d.rounded_rectangle(xy,radius=r,fill=fill,outline=outline,width=w)
 def text(d,xy,s,size=24,color=TEXT,bold=False,anchor=None,mono=False): d.text(xy,s,font=f(size,bold,mono),fill=color,anchor=anchor)
@@ -158,17 +159,16 @@ def main():
     root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo.png"
     if not src.is_file(): raise SystemExit("Required source logo not found: "+str(src))
     out=root/"dist"/"google-play-assets"; out.mkdir(parents=True,exist_ok=True); lg=logo(src)
-    # Google Play store icon is opaque and square; round corners are applied by the store.
-    icon=Image.new("RGBA",(512,512),BG+(255,)); icon.alpha_composite(lg); icon.convert("RGB").save(out/"app-icon-512.png",optimize=True)
+    # Exact uploaded image resized only; preserve its original transparent corner pixels.
+    lg.save(out/"app-icon-512.png",format="PNG",optimize=True)
     (root/"assets"/"mysqlidle-logo-highres.png").parent.mkdir(exist_ok=True); lg.save(root/"assets"/"mysqlidle-logo-highres.png",format="PNG",optimize=True)
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
     if not android.parent.is_dir(): raise SystemExit("Android icon resource folder missing: "+str(android.parent))
     lg.save(android,format="PNG",optimize=True)
-    # Use the same logo without added text or decoration, centered on a matching navy canvas.
-    fg=Image.new("RGBA",(1024,500),(14,44,77,255))
-    feature_mark=lg.resize((500,500),Image.Resampling.LANCZOS)
-    fg.alpha_composite(feature_mark,((1024-500)//2,0))
-    fg.convert("RGB").save(out/"feature-graphic-1024x500.png",optimize=True)
+    # Exact uploaded image resized directly to the requested feature-graphic dimensions.
+    # No added background, text, masking, padding, or decorative elements.
+    fg=logo(src,(1024,500))
+    fg.save(out/"feature-graphic-1024x500.png",format="PNG",optimize=True)
     for name,fn in [("phone-01-connect-and-verify-1080x1920.png",phone_connect),("phone-02-unlock-and-pair-1080x1920.png",phone_pair),("phone-03-mysql-connection-1080x1920.png",phone_connection),("phone-04-sql-editor-and-results-1080x1920.png",phone_query)]: fn(lg,out/name)
     specs=[("01-sql-editor.png","SQL editor and quick templates","editor"),("02-mysql-connection.png","Connect through the desktop companion","connection"),("03-secure-pairing.png","Pair with a trusted Windows desktop","pairing"),("04-query-results.png","Review results and export CSV","results")]
     for folder in ("tablet-7-inch","tablet-10-inch","desktop"):
@@ -177,12 +177,12 @@ def main():
     files=[]
     for x in sorted(out.rglob("*.png")):
         with Image.open(x) as im: files.append({"file":x.relative_to(out).as_posix(),"width":im.width,"height":im.height,"bytes":x.stat().st_size})
-    manifest={"product":"MySQL IDLE Mobile","notes":["512x512 opaque PNG app icon made from the uploaded MySQL IDLE dolphin badge.","1024x500 feature graphic.","Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered previews based on the current UI; verify against the final build on a real device before submission.","XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists."],"assets":files}
+    manifest={"product":"MySQL IDLE Mobile","notes":["512x512 PNG directly resized from the uploaded MySQL IDLE logo, preserving transparency.","1024x500 feature graphic.","Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered previews based on the current UI; verify against the final build on a real device before submission.","XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists."],"assets":files}
     (out/"ASSET-MANIFEST.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
     zip_path=root/"dist"/"MySQLIDLE-Play-Store-Assets.zip"
     with zipfile.ZipFile(zip_path,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
         for x in sorted(out.rglob("*")):
             if x.is_file(): z.write(x,x.relative_to(out.parent))
-    print("Generated a resized 512px logo, same-logo 1024x500 feature graphic, store icon, screenshot previews and ZIP.")
+    print("Generated direct resized 512x512 and 1024x500 logo files, shared app branding, screenshot previews and ZIP.")
 
 if __name__=="__main__": main()
