@@ -106,14 +106,19 @@ jobs:
       - name: Run regression tests
         shell: pwsh
         run: |
-          # Capture unittest's stderr as well as stdout so PowerShell does not
-          # turn its normal progress stream into a failed native-command step.
-          $testOutput = & $env:MYSQLIDLE_PYTHON -m unittest -v test_mysql_idle.py test_password_auth.py test_feature_governor.py test_packaging_branding.py 2>&1
-          $testExitCode = $LASTEXITCODE
-          $testOutput | ForEach-Object { Write-Host $_ }
-          Write-Host "Python regression test exit code: $testExitCode"
-          if ($testExitCode -ne 0) {
-            throw "Desktop regression tests failed with exit code $testExitCode."
+          $testStdout = Join-Path $env:RUNNER_TEMP "mysqlidle-tests-stdout.txt"
+          $testStderr = Join-Path $env:RUNNER_TEMP "mysqlidle-tests-stderr.txt"
+          Remove-Item $testStdout, $testStderr -Force -ErrorAction SilentlyContinue
+          $testProcess = Start-Process -FilePath $env:MYSQLIDLE_PYTHON -ArgumentList @(
+            "-m", "unittest", "-v",
+            "test_mysql_idle.py", "test_password_auth.py",
+            "test_feature_governor.py", "test_packaging_branding.py"
+          ) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $testStdout -RedirectStandardError $testStderr
+          if (Test-Path $testStdout) { Get-Content $testStdout | ForEach-Object { Write-Host $_ } }
+          if (Test-Path $testStderr) { Get-Content $testStderr | ForEach-Object { Write-Host $_ } }
+          Write-Host "Python regression test exit code: $($testProcess.ExitCode)"
+          if ($testProcess.ExitCode -ne 0) {
+            throw "Desktop regression tests failed with exit code $($testProcess.ExitCode)."
           }
       - name: Compile Python modules
         shell: pwsh
