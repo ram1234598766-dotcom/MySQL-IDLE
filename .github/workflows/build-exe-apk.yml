@@ -547,13 +547,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 - "$APK_SMOKE_PATH" <<'PY'
+          import os
           import subprocess
           import sys
           from pathlib import Path
 
           apk = Path(sys.argv[1])
-          aapt = Path(os.environ["ANDROID_HOME"]) if False else None
-          sdk = Path(__import__("os").environ["ANDROID_HOME"])
+          sdk = Path(os.environ["ANDROID_HOME"])
           tool = sdk / "build-tools" / "35.0.0" / "aapt"
           result = subprocess.run(
               [str(tool), "dump", "permissions", str(apk)],
