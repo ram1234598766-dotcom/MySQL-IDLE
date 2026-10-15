@@ -54,6 +54,12 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from feature_governor import APPROVAL_TTL_SECONDS, FeatureGovernor
+from password_auth import (
+    MIN_PASSWORD_LENGTH as MIN_MASTER_PASSWORD_LENGTH,
+    load_password_record,
+    save_password_record,
+    verify_password,
+)
 
 try:
     import pymysql
@@ -97,6 +103,7 @@ def get_app_data_dir():
 APP_DATA_DIR = get_app_data_dir()
 LOG_DIR = APP_DATA_DIR / "logs"
 CONFIG_PATH = APP_DATA_DIR / "settings.json"
+MASTER_PASSWORD_PATH = APP_DATA_DIR / "master_password.json"
 LEGACY_CONFIG_PATH = Path.home() / ".mysql_idle.json"
 # SQL text can contain literals or tokens. Disk persistence is opt-in.
 SAVE_HISTORY = os.environ.get("MYSQLIDLE_SAVE_HISTORY", "").strip().lower() in {"1", "true", "yes"}
@@ -1767,7 +1774,7 @@ class MySQLIDLE:
         consent = messagebox.askyesno(
             "Enable Android / Mobile Companion",
             "This starts a temporary web interface on your local network so an Android phone can run SQL through this computer.\n\n"
-            "Security note: this companion uses HTTPS with TLS certificate fingerprint verification. Enable it only on a trusted private Wi-Fi/LAN, never on public Wi-Fi, and never forward its port to the internet. The random pairing code grants database access until the companion is stopped.\n\n"
+            "Security note: the phone must enter the same MySQL IDLE master password you set on this Windows computer, as well as the temporary pairing code. HTTPS uses certificate fingerprint verification. Enable it only on a trusted private Wi-Fi/LAN, never on public Wi-Fi, and never forward its port to the internet.\n\n"
             "Start it now?",
             icon="warning", parent=self.root,
         )
@@ -1775,7 +1782,12 @@ class MySQLIDLE:
             return
         try:
             from mobile_companion import MobileCompanionServer
-            self.mobile_server = MobileCompanionServer(governor=self.governor)
+            password_record = load_password_record(MASTER_PASSWORD_PATH)
+            if password_record is None:
+                raise RuntimeError("Set a MySQL IDLE master password before enabling the Android / Mobile Companion.")
+            self.mobile_server = MobileCompanionServer(
+                governor=self.governor, password_record=password_record
+            )
             self.mobile_server.start()
             self.tools_menu.entryconfig(1, state=tk.NORMAL)
             self.with_output(lambda: self.write("Android / Mobile Companion enabled on the local network.\n", "info"))
@@ -1816,7 +1828,7 @@ class MySQLIDLE:
         code_entry = ttk.Entry(win, textvariable=code_var, state="readonly", font=("Consolas", 11))
         code_entry.pack(fill=tk.X, pady=(0, 6))
         ttk.Button(win, text="Copy pairing code", command=lambda: self._copy_text(server.pairing_code, win)).pack(anchor="e")
-        tk.Label(win, text="On Android: enter this HTTPS address, compare the certificate fingerprint, then enter the pairing code. Verified TLS protects traffic to the companion. For MySQL connections, leave verified TLS enabled and supply your server CA certificate if needed. Allow Windows Firewall access on private networks only. Stop the companion when finished.", bg="white", fg="#8a3636", wraplength=640, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(12, 8))
+        tk.Label(win, text="On Android: enter this HTTPS address, compare the certificate fingerprint, then enter the same MySQL IDLE master password set on this Windows computer plus the temporary pairing code. A mismatch is rejected. Verified TLS protects traffic to the companion. For MySQL connections, leave verified TLS enabled and supply your server CA certificate if needed. Allow Windows Firewall access on private networks only. Stop the companion when finished.", bg="white", fg="#8a3636", wraplength=640, justify=tk.LEFT, anchor="w").pack(fill=tk.X, pady=(12, 8))
         buttons = tk.Frame(win, bg="white")
         buttons.pack(fill=tk.X, side=tk.BOTTOM)
         ttk.Button(buttons, text="Stop Companion", command=lambda: (self.stop_mobile_companion(), win.destroy())).pack(side=tk.RIGHT)
@@ -2037,6 +2049,106 @@ class MySQLIDLE:
         self.root.destroy()
 
 
+def _authenticate_startup(root):
+    """Set the master password on first launch, then require it at each launch."""
+    root.withdraw()
+    _apply_window_icon(root)
+    try:
+        record = load_password_record(MASTER_PASSWORD_PATH)
+    except (OSError, ValueError) as exc:
+        logging.exception("Could not load the MySQL IDLE master-password verifier")
+        messagebox.showerror(
+            "Master password unavailable",
+            "The MySQL IDLE master-password record could not be read. Startup is blocked "
+            "rather than resetting authentication automatically.\n\n" + str(exc),
+            parent=root,
+        )
+        return False
+
+    if record is None:
+        while True:
+            password = simpledialog.askstring(
+                "Set MySQL IDLE master password",
+                "Create a master password with at least "
+                + str(MIN_MASTER_PASSWORD_LENGTH)
+                + " characters.\n\nThis is separate from your MySQL database password. "
+                "You will enter it each time you start MySQL IDLE on Windows, and the same "
+                "password is required when pairing Android.",
+                show="*",
+                parent=root,
+            )
+            if password is None:
+                return False
+            if len(password) < MIN_MASTER_PASSWORD_LENGTH or len(password) > 1024:
+                messagebox.showerror(
+                    "Invalid master password",
+                    "Use between " + str(MIN_MASTER_PASSWORD_LENGTH) + " and 1024 characters.",
+                    parent=root,
+                )
+                continue
+            confirmation = simpledialog.askstring(
+                "Confirm master password",
+                "Enter the same master password again:",
+                show="*",
+                parent=root,
+            )
+            if confirmation is None:
+                return False
+            if password != confirmation:
+                messagebox.showerror(
+                    "Passwords do not match",
+                    "The two passwords were different. Please set the master password again.",
+                    parent=root,
+                )
+                continue
+            try:
+                save_password_record(MASTER_PASSWORD_PATH, password)
+            except (OSError, ValueError) as exc:
+                logging.exception("Could not save the MySQL IDLE master-password verifier")
+                messagebox.showerror(
+                    "Could not save master password",
+                    "MySQL IDLE cannot start without saving its master-password verifier.\n\n"
+                    + str(exc),
+                    parent=root,
+                )
+                return False
+            messagebox.showinfo(
+                "Master password configured",
+                "Your master password is set. Use this exact password whenever you unlock "
+                "MySQL IDLE on Windows and whenever Android pairs with this desktop.\n\n"
+                "The password itself is not saved; only a salted verifier is stored.",
+                parent=root,
+            )
+            return True
+
+    for attempt in range(5):
+        entered = simpledialog.askstring(
+            "Unlock MySQL IDLE",
+            "Enter your MySQL IDLE master password to continue:",
+            show="*",
+            parent=root,
+        )
+        if entered is None:
+            return False
+        if verify_password(entered, record):
+            return True
+        remaining = 4 - attempt
+        if remaining:
+            messagebox.showerror(
+                "Incorrect master password",
+                "The password did not match. "
+                + str(remaining)
+                + " attempt(s) remain for this launch.",
+                parent=root,
+            )
+    messagebox.showerror(
+        "Access denied",
+        "MySQL IDLE will close after five incorrect master-password attempts.",
+        parent=root,
+    )
+    return False
+
+
 def _show_startup_error(title, message):
     try:
         import tkinter.messagebox as tk_messagebox
@@ -2074,7 +2186,13 @@ def main():
     logging.info("Starting %s %s", APP_NAME, APP_VERSION)
     try:
         root = tk.Tk()
+        root.withdraw()
+        _apply_window_icon(root)
+        if not _authenticate_startup(root):
+            root.destroy()
+            return
         MySQLIDLE(root)
+        root.deiconify()
         root.mainloop()
     except Exception as exc:
         logging.exception("Fatal application startup/runtime error")

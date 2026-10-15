@@ -109,7 +109,9 @@ class MainActivity : Activity() {
         page.addView(label(
             "On the Windows desktop, open Tools → Android / Mobile Companion. Enter the HTTPS " +
                 "address and the SHA-256 certificate fingerprint shown there. Compare every " +
-                "fingerprint pair before connecting; the certificate changes when the companion restarts.",
+                "fingerprint pair before connecting; the certificate changes when the companion restarts. " +
+                "On the next screen, enter the same MySQL IDLE master password set on Windows plus the " +
+                "temporary pairing code. A wrong password is rejected by the desktop.",
             14f, muted
         ).apply { setPadding(0, dp(8), 0, dp(18)) })
 

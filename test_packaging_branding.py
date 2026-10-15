@@ -49,6 +49,17 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertNotIn('[UninstallDelete]\nType: filesandordirs; Name: "{app}"', source)
         self.assertNotIn("WizardSilent", source)
 
+    def test_windows_startup_requires_master_password_and_android_uses_same_verifier(self):
+        desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
+        companion = (ROOT / "mobile_companion.py").read_text(encoding="utf-8")
+        self.assertIn('MASTER_PASSWORD_PATH = APP_DATA_DIR / "master_password.json"', desktop)
+        self.assertIn("if not _authenticate_startup(root):", desktop)
+        self.assertIn("password_record=password_record", desktop)
+        self.assertIn("from password_auth import is_password_record, verify_password", companion)
+        self.assertIn('master_password = data.get("masterPassword", "")', companion)
+        self.assertIn("password_valid = verify_password(master_password, owner.password_record)", companion)
+        self.assertIn("Invalid master password or pairing code.", companion)
+
     def test_installer_creates_desktop_shortcut_with_explicit_shared_icon(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         self.assertIn("WizardStyle=modern dynamic polar includetitlebar", source)

@@ -87,6 +87,7 @@ jobs:
           import unittest
           suite = unittest.TestSuite()
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle'))
+          suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_password_auth'))
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_feature_governor'))
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_packaging_branding'))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
