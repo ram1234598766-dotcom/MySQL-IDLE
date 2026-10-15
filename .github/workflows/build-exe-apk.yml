@@ -82,11 +82,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Python Install Manager configuration failed." }
           & $managerCommand install 3.15.0
           if ($LASTEXITCODE -ne 0) { throw "Python 3.15.0 installation failed." }
-          & $managerCommand exec -3.15 -m venv .venv
-          if ($LASTEXITCODE -ne 0) { throw "Python 3.15.0 virtual environment creation failed." }
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\.venv\Scripts"
-          Add-Content -Path $env:GITHUB_ENV -Value "MYSQLIDLE_PYTHON=$env:GITHUB_WORKSPACE\.venv\Scripts\python.exe"
-          & ".\.venv\Scripts\python.exe" --version
+          $pythonExecutable = (& $managerCommand exec -3.15 -c "import sys; print(sys.executable)" | Select-Object -Last 1).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $pythonExecutable)) {
+            throw "Could not resolve the actual CPython 3.15 interpreter path."
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "MYSQLIDLE_PYTHON=$pythonExecutable"
+          Write-Host "Using real CPython executable: $pythonExecutable"
+          & $pythonExecutable --version
+          if ($LASTEXITCODE -ne 0) { throw "The Python 3.15 interpreter did not launch correctly." }
       - name: Restore source payload when bootstrapping an empty repo
         run: python tools/restore_sources.py
       - name: Install build dependencies
