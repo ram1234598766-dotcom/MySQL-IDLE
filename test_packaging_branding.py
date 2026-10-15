@@ -28,12 +28,23 @@ class PackagingBrandingTests(unittest.TestCase):
             "phone-03-mysql-connection-1080x1920.png": (1080, 1920),
             "phone-04-sql-editor-and-results-1080x1920.png": (1080, 1920),
         }
+        source_path = ROOT / "assets" / "mysqlidle-logo.png"
+        with Image.open(source_path) as source_image:
+            source = source_image.convert("RGBA")
+        exact_outputs = {
+            "app-icon-512.png": source.resize((512, 512), Image.Resampling.LANCZOS),
+            "feature-graphic-1024x500.png": source.resize((1024, 500), Image.Resampling.LANCZOS),
+        }
         for name, size in expected.items():
             path = out / name
             with self.subTest(name=name):
                 self.assertTrue(path.is_file(), f"Missing generated asset: {path}")
                 with Image.open(path) as image:
                     self.assertEqual(image.size, size)
+                    if name in exact_outputs:
+                        self.assertEqual(image.mode, "RGBA")
+                        self.assertEqual(list(image.getdata()), list(exact_outputs[name].getdata()),
+                                         f"{name} must be only a direct resize of the uploaded image")
                 self.assertLessEqual(path.stat().st_size, 8 * 1024 * 1024)
         for folder in ("tablet-7-inch", "tablet-10-inch", "desktop"):
             files = list((out / folder).glob("*.png"))
