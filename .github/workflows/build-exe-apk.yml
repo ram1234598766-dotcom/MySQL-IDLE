@@ -42,7 +42,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Restore source files
@@ -67,16 +67,31 @@ jobs:
     env:
       WINDOWS_SIGNING_ENABLED: ${{ github.event_name != 'pull_request' && secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
+      - uses: actions/checkout@v7.0.1
+      - name: Install Python 3.15.0
+        shell: pwsh
+        run: |
+          winget install 9NQ7512CXL7T -e --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $managerCommand = (Get-Command pymanager -ErrorAction SilentlyContinue).Source
+          if (-not $managerCommand) {
+            $managerFile = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\PythonSoftwareFoundation.PythonManager_*\pymanager.exe") -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($managerFile) { $managerCommand = $managerFile.FullName }
+          }
+          if (-not $managerCommand) { throw "Official Python Install Manager was not found after installation." }
+          & $managerCommand install --configure -y
+          if ($LASTEXITCODE -ne 0) { throw "Python Install Manager configuration failed." }
+          & $managerCommand install 3.15.0
+          if ($LASTEXITCODE -ne 0) { throw "Python 3.15.0 installation failed." }
+          & $managerCommand exec -3.15 -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw "Python 3.15.0 virtual environment creation failed." }
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\.venv\Scripts"
+          & ".\.venv\Scripts\python.exe" --version
       - name: Restore source payload when bootstrapping an empty repo
         run: python tools/restore_sources.py
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pyinstaller pillow
+          python -m pip install -r requirements.txt pyinstaller==6.22.3 pillow==12.3.0
       - name: Generate branded Windows assets
         run: python tools/generate_brand_assets.py
       - name: Run regression tests
@@ -279,7 +294,7 @@ jobs:
           if (Test-Path "dist\mysql_idle") {
             Compress-Archive -Path "dist\mysql_idle\*" -DestinationPath "dist\MySQLIDLE-Folder.zip" -Force
           }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: MySQLIDLE-Windows
           path: |
@@ -299,26 +314,26 @@ jobs:
     env:
       ANDROID_SIGNING_ENABLED: ${{ github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Restore source payload when bootstrapping an empty repo
         run: python tools/restore_sources.py
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
+      - name: Install Python 3.15.0
+        shell: bash
+        run: bash tools/setup_python_3_15_linux.sh
       - name: Install Python runtime dependencies for the mobile companion
         run: python -m pip install -r requirements.txt
       - name: Run mobile HTTPS integration tests
         run: python -m unittest -v test_mobile_companion.py test_feature_governor.py
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v4
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: android-actions/setup-android@v4.0.4
+      - uses: gradle/actions/setup-gradle@v6.4.0
         with:
-          gradle-version: "8.9"
+          gradle-version: "9.8.1"
       - name: Install Android platform and build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Report Android signing readiness
         if: github.event_name != 'pull_request'
         shell: bash
@@ -398,7 +413,7 @@ jobs:
       - name: Download previous encrypted signing-key backup
         if: env.ANDROID_SIGNING_ENABLED == 'true' && steps.find-signing-backup.outputs.run_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: MySQLIDLE-SigningKey-Backup
           run-id: ${{ steps.find-signing-backup.outputs.run_id }}
@@ -519,7 +534,7 @@ jobs:
           bundle="android-app/app/build/outputs/bundle/release/app-release.aab"
           test -s "$apk"
           test -s "$bundle"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
           jarsigner -verify "$bundle"
           mkdir -p dist
           cp "$apk" dist/MySQLIDLE-Mobile-release.apk
@@ -554,7 +569,17 @@ jobs:
 
           apk = Path(sys.argv[1])
           sdk = Path(os.environ["ANDROID_HOME"])
-          tool = sdk / "build-tools" / "35.0.0" / "aapt"
+          tool = sdk / "build-tools" / "36.0.0" / "aapt"
+          badging = subprocess.run(
+              [str(tool), "dump", "badging", str(apk)],
+              check=True, capture_output=True, text=True
+          )
+          import re
+          match = re.search(r"targetSdkVersion:'(\d+)'", badging.stdout)
+          if not match or int(match.group(1)) < 36:
+              raise SystemExit("APK must target Android API level 36 or higher.")
+          print("Target API check passed:", match.group(1))
+
           result = subprocess.run(
               [str(tool), "dump", "permissions", str(apk)],
               check=True, capture_output=True, text=True
@@ -577,10 +602,10 @@ jobs:
         run: |
           set -euo pipefail
           test -s "$APK_SMOKE_PATH"
-          sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
+          sdkmanager "emulator" "system-images;android-36;google_apis;x86_64"
           export ANDROID_AVD_HOME="$HOME/.android/avd"
           mkdir -p "$ANDROID_AVD_HOME"
-          printf "no\n" | avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-35;google_apis;x86_64"
+          printf "no\n" | avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-36;google_apis;x86_64"
           if [[ ! -s "$ANDROID_AVD_HOME/mysqlidle-smoke.ini" ]]; then
             avdmanager list avd || true
             find "$HOME/.android" -maxdepth 3 -type f -name "*.ini" -print || true
@@ -666,7 +691,7 @@ jobs:
           grep -q "Connect to the desktop companion" "$RUNNER_TEMP/mysqlidle-window.xml"
           grep -q "MySQL IDLE logo" "$RUNNER_TEMP/mysqlidle-window.xml"
           echo "APK installed and launched. MainActivity stayed alive and showed branded connection UI (PID $app_pid)." >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: MySQLIDLE-Android
           path: |
@@ -676,7 +701,7 @@ jobs:
           retention-days: 90
       - name: Upload encrypted Android signing-key backup
         if: env.ANDROID_SIGNING_ENABLED == 'true' && steps.validate-signing.outputs.replaced == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: MySQLIDLE-SigningKey-Backup
           path: dist/MySQLIDLE-SigningKey.jks.enc
@@ -748,13 +773,13 @@ jobs:
           fi
       - name: Download signed Android artifact
         if: steps.signing.outputs.ready == 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: MySQLIDLE-Android
           path: release-assets
       - name: Download Windows build artifacts
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: MySQLIDLE-Windows
           path: release-assets
@@ -801,7 +826,7 @@ jobs:
           echo "SHA-256 checksums generated for: ${included[*]}" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish Android-only release
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready != 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
           target_commitish: main
@@ -814,7 +839,7 @@ jobs:
             release-assets/SHA256SUMS
       - name: Publish Android and Windows release assets
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
           target_commitish: main

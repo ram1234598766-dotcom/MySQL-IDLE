@@ -25,7 +25,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('params.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY)', source)
         self.assertIn("tls_verify=DEFAULT_MYSQL_TLS_VERIFY", source)
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn("PyMySQL>=1.2.0,<2.0", requirements)
+        self.assertIn("PyMySQL>=1.2.3,<2.0", requirements)
 
     def test_installer_is_branded_and_removes_installed_program_files(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
@@ -103,6 +103,37 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('contentDescription = "MySQL IDLE logo"', main_activity)
         styles = (ROOT / "android-app/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
         self.assertIn("@drawable/ic_launcher_foreground", styles)
+
+
+    def test_android_api_36_configuration_and_edge_to_edge_insets(self):
+        app_build = (ROOT / "android-app/app/build.gradle.kts").read_text(encoding="utf-8")
+        root_build = (ROOT / "android-app/build.gradle.kts").read_text(encoding="utf-8")
+        activity = (ROOT / "android-app/app/src/main/java/com/mysqlidle/mobile/MainActivity.kt").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build-exe-apk.yml").read_text(encoding="utf-8")
+        self.assertIn("compileSdk = 36", app_build)
+        self.assertIn("targetSdk = 36", app_build)
+        self.assertIn('version "9.4.0"', root_build)
+        self.assertIn("gradle-version: \"9.8.1\"", workflow)
+        self.assertIn('build-tools;36.0.0', workflow)
+        self.assertIn("APK must target Android API level 36 or higher.", workflow)
+        self.assertIn("winget install 9NQ7512CXL7T", workflow)
+        self.assertIn("exec -3.15 -m venv .venv", workflow)
+        self.assertIn("bash tools/setup_python_3_15_linux.sh", workflow)
+        linux_setup = (ROOT / "tools/setup_python_3_15_linux.sh").read_text(encoding="utf-8")
+        self.assertIn('version="3.15.0"', linux_setup)
+        self.assertIn('archive="${RUNNER_TEMP:?}/Python-${version}.tar.xz"', linux_setup)
+        self.assertIn("ba4bed1ba346b916890b76d9e320451420aa69f6408997d33c66482eeae3d575", linux_setup)
+        self.assertIn("python3.15", linux_setup)
+        self.assertNotIn('python-version: "3.14.8"', workflow)
+        windows_builder = (ROOT / "build_windows.ps1").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("py -3.15", windows_builder)
+        self.assertIn("pyinstaller==6.22.3 pillow==12.3.0", windows_builder)
+        self.assertIn("Python 3.15", readme)
+        self.assertIn("WindowInsets.Type.systemBars()", activity)
+        self.assertIn("applySystemBarInsets(scroll)", activity)
+        self.assertIn("applySystemBarInsets(page)", activity)
+
 
 
 if __name__ == "__main__":
