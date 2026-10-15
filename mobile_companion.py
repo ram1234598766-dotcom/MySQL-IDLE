@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from feature_governor import FeatureGovernor
+from password_auth import is_password_record, verify_password
 
 import pymysql
 
@@ -68,14 +69,14 @@ header{padding:18px 16px 12px;border-bottom:1px solid var(--line);position:stick
 </style></head><body>
 <header><div class="rowhead"><div class="brand"><svg class="brand-logo" viewBox="0 0 48 48" role="img" aria-label="MySQL IDLE logo"><rect x="1" y="1" width="46" height="46" rx="11" fill="#0f172a"/><path d="M12 15 21 24 12 33 16.5 37.5 30 24 16.5 10.5Z" fill="#22d3ee"/><rect x="27" y="30" width="10" height="4" rx="1.5" fill="#2563eb"/></svg><div><h1>MySQL IDLE <span class="badge">Android companion</span></h1><div class="sub">Responsive SQL workspace · session-only credentials</div></div></div><div id="connectionBadge" class="badge">Not connected</div></div></header>
 <main class="wrap">
-<section id="pairPanel" class="panel"><h2>Pair with desktop</h2><p class="muted">In the desktop app, open Tools → Android / Mobile Companion and enter the 10-digit code plus the SHA-256 certificate fingerprint shown there. This verifies the desktop before credentials are sent. Keep both devices on the same trusted private network.</p><div class="field"><label for="pairCode">Temporary pairing code</label><input id="pairCode" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="10-digit code from desktop"></div><div class="actions"><button class="primary" id="pairBtn">Pair device</button></div><div id="pairStatus" class="status" style="margin-top:12px">Pairing expires when the desktop companion stops.</div></section>
+<section id="pairPanel" class="panel"><h2>Unlock and pair with desktop</h2><p class="muted">Enter the same MySQL IDLE master password you set on Windows and the temporary code shown in Tools → Android / Mobile Companion. The Windows desktop rejects a wrong password. Compare the SHA-256 certificate fingerprint before connecting and keep both devices on the same trusted private network.</p><div class="field"><label for="masterPassword">MySQL IDLE master password</label><div class="secret-control"><input id="masterPassword" type="password" autocomplete="current-password" aria-describedby="masterPasswordHint"><button id="masterPasswordToggle" type="button" aria-label="Show master password" aria-pressed="false">Show</button></div><span id="masterPasswordHint" class="hint">This must match the password configured on the Windows desktop. It is checked over HTTPS and is not saved on Android.</span></div><div class="field" style="margin-top:12px"><label for="pairCode">Temporary pairing code</label><input id="pairCode" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="10-digit code from desktop"></div><div class="actions"><button class="primary" id="pairBtn">Unlock and pair</button></div><div id="pairStatus" class="status" style="margin-top:12px">Both the master password and pairing code are required.</div></section>
 <section id="connectionPanel" class="panel connection hidden"><div class="rowhead"><h2>MySQL connection</h2><button id="disconnectBtn" class="danger">Disconnect</button></div><div class="grid"><div class="field"><label for="host">Host (as seen by desktop)</label><input id="host" value="localhost" autocomplete="off"></div><div class="field"><label for="port">Port</label><input id="port" value="3306" inputmode="numeric"></div><div class="field"><label for="user">Username</label><input id="user" autocomplete="username"></div><div class="field"><label for="password">Password (not saved)</label><div class="secret-control"><input id="password" type="password" autocomplete="current-password" aria-describedby="passwordHint"><button id="passwordToggle" type="button" aria-label="Show password" aria-pressed="false">Show</button></div><span id="passwordHint" class="hint">Hidden by default and cleared after a successful connection.</span></div><div class="field wide"><label><input id="tlsVerify" type="checkbox" checked style="width:auto;margin-right:8px"> Require verified TLS to MySQL (recommended)</label><span class="hint">The MySQL server must present a certificate trusted by the desktop system or the CA file below.</span></div><div class="field wide"><label for="tlsCa">MySQL CA certificate path on desktop (optional)</label><input id="tlsCa" autocomplete="off" spellcheck="false" placeholder="C:\\certs\\mysql-ca.pem"><span class="hint">This path is read on the desktop computer, not on the phone.</span></div><div class="field wide"><label for="database">Database (optional)</label><input id="database" autocomplete="off"></div><div class="field wide"><label><input id="autocommit" type="checkbox" checked style="width:auto;margin-right:8px"> Auto-commit each statement</label></div></div><div class="actions"><button class="primary" id="connectBtn">Connect to MySQL</button></div><div class="hint">The desktop computer connects to MySQL. For a local database on that computer, use localhost.</div><div id="dbStatus" class="status" style="margin-top:10px">Not connected</div></section>
 <section id="editorPanel" class="panel editor hidden"><div class="rowhead"><h2>SQL editor</h2><span class="hint">Ctrl/⌘ + Enter to run</span></div><textarea id="sql" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="SQL editor" placeholder="SELECT VERSION();"></textarea><div class="actions"><button id="runBtn" class="primary" disabled>Run SQL</button><button id="clearBtn">Clear</button><button id="historyBackBtn" disabled>Previous</button><button id="historyForwardBtn" disabled>Next</button><span id="historyCount" class="hint">0/50 queries in memory</span><button id="commitBtn" disabled>Commit</button><button id="rollbackBtn" disabled>Rollback</button></div><div class="actions"><select id="templateSelect" aria-label="SQL template"><option value="">Quick SQL template…</option><option value="SELECT VERSION();">Server version</option><option value="SELECT DATABASE();">Current database</option><option value="SHOW DATABASES;">List databases</option><option value="SHOW TABLES;">List tables</option><option value="SELECT NOW();">Current server time</option></select><button id="insertTemplateBtn">Insert template</button></div><div id="queryStatus" class="status" style="margin-top:12px">Ready.</div></section>
 <section id="resultPanel" class="panel result hidden"><div class="rowhead"><h2>Result</h2><button id="exportBtn" disabled>Export complete CSV</button></div><div id="metrics" class="metrics"></div><div id="resultTable" class="table-wrap" role="region" aria-label="Query results" tabindex="0"><div class="muted" style="padding:12px">Run a query to see results.</div></div></section>
 </main><footer>HTTPS is certificate-pinned between the app and desktop. Use a trusted private network; never expose this service to the public internet.</footer>
 <script>
 (()=>{'use strict';
-const $=id=>document.getElementById(id);let sessionToken=sessionStorage.getItem('mysqlIdleMobileSession')||'';let lastResult=false;let connected=false;let queryRunning=false;const queryHistory=[];let historyIndex=0;let historyDraft='';
+const $=id=>document.getElementById(id);let sessionToken='';sessionStorage.removeItem('mysqlIdleMobileSession');let lastResult=false;let connected=false;let queryRunning=false;const queryHistory=[];let historyIndex=0;let historyDraft='';
 function status(id,msg,kind=''){const el=$(id);el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
 function updateActionStates(){$('runBtn').disabled=!connected||queryRunning;$('commitBtn').disabled=!connected||queryRunning;$('rollbackBtn').disabled=!connected||queryRunning;$('connectBtn').disabled=queryRunning;$('exportBtn').disabled=!lastResult||queryRunning;}
 function setConnectedState(value){connected=!!value;updateActionStates();}
@@ -87,7 +88,8 @@ function moveHistory(direction){if(!queryHistory.length)return;const input=$('sq
 function clearQueryHistory(){queryHistory.length=0;historyIndex=0;historyDraft='';updateHistoryControls();}
 async function api(path,data,method='POST'){const headers={};if(method!=='GET')headers['Content-Type']='application/json';if(sessionToken)headers.Authorization='Bearer '+sessionToken;const response=await fetch(path,{method,headers,body:method==='GET'?undefined:JSON.stringify(data||{})});let json={};try{json=await response.json()}catch{}if(response.status===401){const message=json.error||'Pairing expired. Pair again.';clearSession();throw new Error(message)}if(!response.ok||json.ok===false)throw Object.assign(new Error(json.error||('Request failed ('+response.status+')')),json);return json;}
 $('passwordToggle').onclick=()=>{const reveal=$('password').type==='password';$('password').type=reveal?'text':'password';$('passwordToggle').textContent=reveal?'Hide':'Show';$('passwordToggle').setAttribute('aria-pressed',String(reveal));$('passwordToggle').setAttribute('aria-label',reveal?'Hide password':'Show password');};
-$('pairBtn').onclick=async()=>{const btn=$('pairBtn');btn.disabled=true;try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:$('pairCode').value.trim()})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Pairing failed');sessionToken=j.token;sessionStorage.setItem('mysqlIdleMobileSession',sessionToken);showApp(true);status('dbStatus','Not connected');$('connectionBadge').textContent='Paired · not connected';status('pairStatus','Device paired. Connect to MySQL below.','good');}catch(e){status('pairStatus',e.message,'bad')}finally{btn.disabled=false}};
+$('masterPasswordToggle').onclick=()=>{const reveal=$('masterPassword').type==='password';$('masterPassword').type=reveal?'text':'password';$('masterPasswordToggle').textContent=reveal?'Hide':'Show';$('masterPasswordToggle').setAttribute('aria-pressed',String(reveal));$('masterPasswordToggle').setAttribute('aria-label',reveal?'Hide master password':'Show master password');};
+$('pairBtn').onclick=async()=>{const btn=$('pairBtn');btn.disabled=true;try{const r=await fetch('/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:$('pairCode').value.trim(),masterPassword:$('masterPassword').value})});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Pairing failed');sessionToken=j.token;$('masterPassword').value='';$('pairCode').value='';showApp(true);status('dbStatus','Not connected');$('connectionBadge').textContent='Unlocked · not connected';status('pairStatus','Master password verified. Device paired.','good');}catch(e){$('masterPassword').value='';status('pairStatus',e.message,'bad')}finally{btn.disabled=false}};
 $('connectBtn').onclick=async()=>{const b=$('connectBtn');b.disabled=true;status('dbStatus','Connecting…');try{const r=await api('/api/connect',{host:$('host').value.trim(),port:$('port').value.trim(),user:$('user').value,password:$('password').value,database:$('database').value.trim(),autocommit:$('autocommit').checked,tlsVerify:$('tlsVerify').checked,sslCa:$('tlsCa').value.trim()});setConnectedState(true);lastResult=false;$('resultPanel').classList.add('hidden');$('resultTable').textContent='Run a query to see results.';status('dbStatus','Connected to '+r.serverVersion,'good');$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('password').value='';updateActionStates();}catch(e){status('dbStatus',e.message+(connected?' The previous connection is still active.':''),'bad');}finally{b.disabled=false;updateActionStates()}};
 async function governedQuery(sql){try{return await api('/api/query',{sql})}catch(e){if(!e.approval_required||!e.approvalToken)throw e;const promptText='Feature Governance flagged '+(e.category||'high-impact')+' SQL ('+(e.risk||'high')+' risk).\n\n'+(e.reason||'This statement may cause significant changes.')+'\n\nApprove this exact statement once?';if(!window.confirm(promptText))throw new Error('Cancelled by Feature Governance.');return api('/api/query',{sql,approvalToken:e.approvalToken})}}
 $('runBtn').onclick=async()=>{const sql=$('sql').value.trim();if(!sql){status('queryStatus','Enter a SQL statement first.');return}rememberQuery(sql);queryRunning=true;updateActionStates();lastResult=false;updateActionStates();status('queryStatus','Running query…');$('metrics').replaceChildren();$('resultTable').textContent='Query running…';$('resultPanel').classList.remove('hidden');try{const r=await governedQuery(sql);status('queryStatus',r.message||'Query completed.','good');if(r.database!==undefined)$('connectionBadge').textContent='Connected · '+(r.database||'no database');$('metrics').replaceChildren();[['Rows',r.rowCount],['Time',r.elapsed.toFixed(3)+' s'],['Mode',r.hasResult?'result set':'statement']].forEach(([k,v])=>{const span=document.createElement('span');const strong=document.createElement('strong');strong.textContent=k+': ';span.append(strong,document.createTextNode(String(v)));$('metrics').append(span)});renderTable(r.columns||[],r.preview||[]);lastResult=!!r.hasResult;$('resultPanel').classList.remove('hidden');if(r.truncated||r.truncatedColumns){const notes=[];if(r.truncated)notes.push(`first ${r.preview.length} rows of ${r.rowCount}`);if(r.truncatedColumns)notes.push(`first ${r.columns.length} of ${r.totalColumns} columns`);status('queryStatus',`Preview limited to ${notes.join(' and ')}. Export contains the complete result.`,'good');}}catch(e){status('queryStatus',e.message,'bad')}finally{queryRunning=false;updateActionStates()}};
@@ -236,7 +238,8 @@ class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
 
 
 class _MobileSession:
-    def __init__(self):
+    def __init__(self, client_ip=None):
+        self.client_ip = client_ip
         self.created = time.monotonic()
         self.last_active = self.created
         self.lock = threading.RLock()
@@ -273,7 +276,10 @@ class _MobileSession:
 class MobileCompanionServer:
     """Start/stop the mobile companion. Public-LAN access is never automatic."""
 
-    def __init__(self, port=8765, bind_host=None, governor=None):
+    def __init__(self, port=8765, bind_host=None, governor=None, password_record=None):
+        if not is_password_record(password_record):
+            raise ValueError("Set a master password in the Windows MySQL IDLE app before enabling the Android companion.")
+        self.password_record = dict(password_record)
         if bind_host is None:
             bind_host = _local_ip()
             if bind_host == "127.0.0.1":
@@ -521,20 +527,30 @@ class MobileCompanionServer:
                         self._json(429, {"ok": False, "error": "Too many pairing attempts. Try again in one minute."})
                         return
                 code = str(data.get("code", ""))
-                if not secrets.compare_digest(code, owner.pairing_code):
+                master_password = data.get("masterPassword", "")
+                code_valid = secrets.compare_digest(code, owner.pairing_code)
+                password_valid = verify_password(master_password, owner.password_record)
+                if not (code_valid and password_valid):
                     with owner.attempts_lock:
                         failures, _ = owner.attempts.get(ip, (0, 0.0))
                         failures += 1
                         owner.attempts[ip] = (failures, now + PAIR_LOCKOUT_SECONDS if failures >= MAX_PAIR_FAILURES else 0.0)
-                    self._json(401, {"ok": False, "error": "Invalid pairing code."})
+                    self._json(401, {"ok": False, "error": "Invalid master password or pairing code."})
                     return
                 with owner.sessions_lock:
                     owner._purge_expired_sessions()
+                    # A reload on the same phone must re-authenticate. Retire that
+                    # phone's previous in-memory token so repeated logins do not fill
+                    # the bounded session table.
+                    for old_token, old_session in list(owner.sessions.items()):
+                        if old_session.client_ip == ip:
+                            owner.sessions.pop(old_token, None)
+                            old_session.close()
                     if len(owner.sessions) >= MAX_SESSIONS:
                         self._json(429, {"ok": False, "error": "Maximum paired devices reached. Restart the companion to reset pairing."})
                         return
                     token = secrets.token_urlsafe(32)
-                    owner.sessions[token] = _MobileSession()
+                    owner.sessions[token] = _MobileSession(client_ip=ip)
                 with owner.attempts_lock:
                     owner.attempts.pop(ip, None)
                 self._json(200, {"ok": True, "token": token})
