@@ -86,7 +86,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         brandHeader.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_mysqlidle_brandmark)
+            setImageResource(R.drawable.ic_mysqlidle_logo)
             contentDescription = "MySQL IDLE logo"
         }, LinearLayout.LayoutParams(dp(64), dp(64)))
         val brandText = LinearLayout(this).apply {
@@ -247,7 +247,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.WHITE)
         }
         toolbar.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_mysqlidle_brandmark)
+            setImageResource(R.drawable.ic_mysqlidle_logo)
             contentDescription = "MySQL IDLE logo"
         }, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
             marginEnd = dp(6)
