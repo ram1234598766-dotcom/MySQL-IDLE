@@ -113,6 +113,9 @@ jobs:
               out.write(status)
           '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
 
+          # Actions runs pwsh with ErrorActionPreference=Stop. Keep native stderr/exit
+          # signaling non-terminating until the explicit unittest status is checked.
+          $ErrorActionPreference = 'Continue'
           $PSNativeCommandUseErrorActionPreference = $false
           & $env:MYSQLIDLE_PYTHON .\run_ci_tests.py
           $testExitCode = $LASTEXITCODE
