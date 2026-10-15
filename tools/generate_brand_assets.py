@@ -8,7 +8,6 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
 LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"
-HIRES_LOGO_SOURCE = ASSETS / "mysqlidle-logo-highres.png"
 
 NAVY = (11, 24, 42)
 DEEP_NAVY = (5, 14, 27)
@@ -38,9 +37,10 @@ def _font(size: int, bold: bool = False):
 
 
 def _render_mark(size: int) -> Image.Image:
-    """Use the shared high-resolution mark when the store-art pipeline generated it."""
-    source_path = HIRES_LOGO_SOURCE if HIRES_LOGO_SOURCE.is_file() else LOGO_SOURCE
-    with Image.open(source_path) as source:
+    """Generate Windows icon sizes from the original supplied 96x96 logo."""
+    with Image.open(LOGO_SOURCE) as source:
+        if source.size != (96, 96):
+            raise ValueError(f"Expected original 96x96 logo, got {source.size}.")
         return source.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
 
 
