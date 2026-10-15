@@ -106,10 +106,11 @@ jobs:
       - name: Run regression tests
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Continue'
-          $PSNativeCommandUseErrorActionPreference = $false
-          & $env:MYSQLIDLE_PYTHON -m unittest -v test_mysql_idle.py test_password_auth.py test_feature_governor.py test_packaging_branding.py
+          # Capture unittest's stderr as well as stdout so PowerShell does not
+          # turn its normal progress stream into a failed native-command step.
+          $testOutput = & $env:MYSQLIDLE_PYTHON -m unittest -v test_mysql_idle.py test_password_auth.py test_feature_governor.py test_packaging_branding.py 2>&1
           $testExitCode = $LASTEXITCODE
+          $testOutput | ForEach-Object { Write-Host $_ }
           Write-Host "Python regression test exit code: $testExitCode"
           if ($testExitCode -ne 0) {
             throw "Desktop regression tests failed with exit code $testExitCode."
