@@ -32,7 +32,7 @@ permissions:
 
 concurrency:
   group: mysqlidle-${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   restore-sources:
