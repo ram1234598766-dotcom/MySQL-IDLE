@@ -113,16 +113,19 @@ jobs:
               out.write(status)
           '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
 
-          Remove-Item .\ci-test-output.txt, .\ci-test-errors.txt -Force -ErrorAction SilentlyContinue
-          $testProcess = Start-Process -FilePath $env:MYSQLIDLE_PYTHON -ArgumentList @(".\run_ci_tests.py") -PassThru -Wait -NoNewWindow -RedirectStandardOutput ".\ci-test-output.txt" -RedirectStandardError ".\ci-test-errors.txt"
-          if (Test-Path .\ci-test-output.txt) { Get-Content .\ci-test-output.txt }
-          if (Test-Path .\ci-test-errors.txt) { Get-Content .\ci-test-errors.txt }
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $env:MYSQLIDLE_PYTHON .\run_ci_tests.py
+          $testExitCode = $LASTEXITCODE
+          Write-Host "Python regression runner exit code: $testExitCode"
           if (!(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
-            throw "Desktop regression tests failed (Python exit code $($testProcess.ExitCode))."
+            throw "Desktop regression tests failed (Python exit code $testExitCode)."
           }
-          if ($testProcess.ExitCode -ne 0) {
-            Write-Warning "Python returned exit code $($testProcess.ExitCode) after reporting TEST_RESULT=PASS; all unittest assertions passed and that explicit result is used for the regression gate."
+          if ($testExitCode -ne 0) {
+            Write-Warning "Python returned a non-zero exit code despite the explicit PASS result; inspect the test output above."
           }
+          # GitHub's pwsh wrapper exits using the current-scope LASTEXITCODE.
+          # Reset it only after the suite's strict PASS file check has succeeded.
+          $LASTEXITCODE = 0
       - name: Validate desktop regression result
         if: always()
         shell: pwsh
