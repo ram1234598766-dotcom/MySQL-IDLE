@@ -156,18 +156,21 @@ def wide(path,title,mode):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1]); args=p.parse_args()
-    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo.png"
+    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo-reference.webp"
     if not src.is_file(): raise SystemExit("Required source logo not found: "+str(src))
     out=root/"dist"/"google-play-assets"; out.mkdir(parents=True,exist_ok=True); lg=logo(src)
     # Exact uploaded image resized only; preserve its original transparent corner pixels.
     lg.save(out/"app-icon-512.png",format="PNG",optimize=True)
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
     if not android.parent.is_dir(): raise SystemExit("Android icon resource folder missing: "+str(android.parent))
-    # Keep the original 96x96 PNG as the Android resource; do not replace it with an upscale.
-    shutil.copyfile(src, android)
-    with Image.open(android) as embedded_logo:
-        if embedded_logo.size != (96, 96):
-            raise SystemExit("Android logo resource must remain the original 96x96 image.")
+    # Convert the exact README logo to PNG at its native resolution; do not downscale it.
+    with Image.open(src) as source_logo:
+        source_logo.load()
+        embedded_logo = source_logo.convert("RGBA")
+    embedded_logo.save(android, format="PNG", optimize=True)
+    with Image.open(android) as embedded_check, Image.open(src) as source_check:
+        if embedded_check.size != source_check.size:
+            raise SystemExit("Android logo resource must preserve the README logo's native resolution.")
     # Exact uploaded image resized directly to the requested feature-graphic dimensions.
     # No added background, text, masking, padding, or decorative elements.
     fg=logo(src,(1024,500))
