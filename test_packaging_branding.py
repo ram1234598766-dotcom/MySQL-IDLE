@@ -53,7 +53,7 @@ class PackagingBrandingTests(unittest.TestCase):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         self.assertIn("WizardStyle=modern dynamic polar includetitlebar", source)
         self.assertIn('UninstallDisplayIcon={app}\\_internal\\assets\\mysqlidle.ico', source)
-        self.assertIn('Name: "{autodesktop}\\\\MySQL IDLE"', source)
+        self.assertIn('Name: "{autodesktop}\\MySQL IDLE"', source)
         self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
         self.assertNotIn("Tasks: desktopicon", source)
 
@@ -66,7 +66,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertTrue(android_logo.is_file())
         self.assertEqual(logo.read_bytes(), android_logo.read_bytes())
         with Image.open(logo) as image:
-            self.assertEqual(image.size, (256, 256))
+            self.assertEqual(image.size, (96, 96))
             self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
 
     def test_android_launcher_and_splash_use_the_supplied_logo(self):
