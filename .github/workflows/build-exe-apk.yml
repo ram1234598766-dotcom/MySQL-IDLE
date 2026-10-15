@@ -116,8 +116,19 @@ jobs:
       - name: Run regression tests
         shell: pwsh
         run: |
-          & $env:MYSQLIDLE_PYTHON -m unittest -v test_mysql_idle.py test_password_auth.py test_feature_governor.py test_packaging_branding.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $testArgs = @(
+            "-m", "unittest", "-v",
+            "test_mysql_idle.py",
+            "test_password_auth.py",
+            "test_feature_governor.py",
+            "test_packaging_branding.py"
+          )
+          $testProcess = Start-Process -FilePath $env:MYSQLIDLE_PYTHON -ArgumentList $testArgs -Wait -PassThru -NoNewWindow
+          if ($testProcess.ExitCode -ne 0) {
+            throw "Regression tests failed with exit code $($testProcess.ExitCode)."
+          }
+          Write-Host "All regression tests passed (exit code 0)."
+          exit 0
       - name: Compile Python modules
         shell: pwsh
         run: '& $env:MYSQLIDLE_PYTHON -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
