@@ -133,6 +133,11 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn("WindowInsets.Type.systemBars()", activity)
         self.assertIn("applySystemBarInsets(scroll)", activity)
         self.assertIn("applySystemBarInsets(page)", activity)
+        self.assertIn("Privacy Policy", activity)
+        self.assertIn("https://github.com/ram1234598766-dotcom/MySQL-IDLE/blob/main/PRIVACY_POLICY.md", activity)
+        privacy = (ROOT / "PRIVACY_POLICY.md").read_text(encoding="utf-8")
+        self.assertIn("# Privacy Policy — MySQL IDLE Mobile", privacy)
+        self.assertIn("contact", privacy.lower())
 
 
 
