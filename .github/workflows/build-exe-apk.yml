@@ -115,6 +115,9 @@ jobs:
           if ((Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests failed.'
           }
+          # The test runner reports PASS in ci-test-status.txt; do not let a stale
+          # native-process exit code from PowerShell mark that passing suite failed.
+          $global:LASTEXITCODE = 0
       - name: Validate desktop regression result
         if: always()
         shell: pwsh
