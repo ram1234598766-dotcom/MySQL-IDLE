@@ -114,6 +114,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn("targetSdk = 36", app_build)
         self.assertRegex(root_build, r'id\("com\.android\.application"\) version "\d+\.\d+\.\d+" apply false')
         self.assertIn("gradle-version: \"9.8.1\"", workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
         self.assertIn('build-tools;36.0.0', workflow)
         self.assertIn("APK must target Android API level 36 or higher.", workflow)
         self.assertIn("winget install 9NQ7512CXL7T", workflow)
