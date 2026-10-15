@@ -72,17 +72,17 @@ jobs:
         shell: pwsh
         run: |
           winget install 9NQ7512CXL7T -e --accept-package-agreements --accept-source-agreements --disable-interactivity
-          $manager = Get-Command pymanager -ErrorAction SilentlyContinue
-          if (-not $manager) {
-            $managerPath = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\PythonSoftwareFoundation.PythonManager_*\pymanager.exe") -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($managerPath) { $manager = $managerPath }
+          $managerCommand = (Get-Command pymanager -ErrorAction SilentlyContinue).Source
+          if (-not $managerCommand) {
+            $managerFile = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\PythonSoftwareFoundation.PythonManager_*\pymanager.exe") -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($managerFile) { $managerCommand = $managerFile.FullName }
           }
-          if (-not $manager) { throw "Official Python Install Manager was not found after installation." }
-          & $manager.Source install --configure -y
+          if (-not $managerCommand) { throw "Official Python Install Manager was not found after installation." }
+          & $managerCommand install --configure -y
           if ($LASTEXITCODE -ne 0) { throw "Python Install Manager configuration failed." }
-          & $manager.Source install 3.15.0
+          & $managerCommand install 3.15.0
           if ($LASTEXITCODE -ne 0) { throw "Python 3.15.0 installation failed." }
-          & $manager.Source exec -3.15 -m venv .venv
+          & $managerCommand exec -3.15 -m venv .venv
           if ($LASTEXITCODE -ne 0) { throw "Python 3.15.0 virtual environment creation failed." }
           Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\.venv\Scripts"
           & ".\.venv\Scripts\python.exe" --version
