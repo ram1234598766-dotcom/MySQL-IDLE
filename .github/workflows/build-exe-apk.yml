@@ -111,6 +111,9 @@ jobs:
           with open('ci-test-status.txt', 'w', encoding='ascii') as out:
               out.write(status)
           '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
+          # Test outcome is determined by ci-test-status.txt; do not let PowerShell
+          # promote a native Python exit code into a terminating error before the gate.
+          $PSNativeCommandUseErrorActionPreference = $false
           python .\run_ci_tests.py
           if ((Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests failed.'
