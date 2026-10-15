@@ -12,6 +12,12 @@ Windows EXE, installer, and folder-archive assets are published whenever the Win
 
 The exact supplied MySQL IDLE logo image is the shared visual source for Windows and Android. It is stored at assets/mysqlidle-logo.png and copied byte-for-byte into Android's drawable-nodpi resource. The Windows ICO, wizard artwork, and shortcut icon are generated from that image by tools/generate_brand_assets.py. The installer adapts to Windows light/dark appearance and always creates a desktop shortcut that points to the packaged icon. CI verifies the shared logo source, desktop shortcut target/icon, application launch, and uninstall cleanup.
 
+## Master password
+
+On first Windows launch, MySQL IDLE asks you to create and confirm a master password of at least 10 characters. You must enter it whenever you start the Windows app again. This is the app-unlock password, not your MySQL server password. The raw password is never saved; MySQL IDLE stores a salted PBKDF2-HMAC-SHA256 verifier in the current user's application-data folder.
+
+Android pairing requires both the same master password and the temporary pairing code shown by **Tools → Android / Mobile Companion** on Windows. A wrong or missing password is rejected by the Windows companion, so the Android SQL interface remains locked. The password is checked over the HTTPS connection after you verify the desktop certificate fingerprint. Android does not persist the password or its pairing token; reopen/refreshing the mobile page requires pairing again. Keep the master password safe—there is no plaintext password to recover.
+
 ## Release signing
 
 Follow SIGNING.md to configure Android release signing and optional trusted Windows code signing in GitHub Actions secrets. Private keys and passwords must never be committed. A debug APK is used only for CI/testing, never as a published release APK; unsigned Windows release files are allowed but clearly labelled.
