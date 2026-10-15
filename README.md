@@ -95,7 +95,7 @@ Windows files may also trigger SmartScreen or other reputation warnings if they 
 
 ### To run the desktop app from source
 
-- Python 3.14 is used by the CI build and recommended for development.
+- Python 3.15 is used by the CI build and recommended for development.
 - A working Tkinter installation for the desktop GUI.
 - Network access to the MySQL or MariaDB server.
 - Dependencies listed in [requirements.txt](requirements.txt).
@@ -130,8 +130,8 @@ The following commands are for PowerShell on Windows, from a clone of this repos
 git clone https://github.com/ram1234598766-dotcom/MySQL-IDLE.git
 Set-Location MySQL-IDLE
 
-py -3.14 --version
-py -3.14 -m venv .venv
+py -3.15 --version
+py -3.15 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
 python -m pip install --upgrade pip
@@ -346,7 +346,7 @@ Do not upload application logs or configuration files publicly without reviewing
 
 ### Build the Windows desktop app
 
-On a Windows development machine, install Python 3.14 and make sure Tkinter is available. If you want the installer, install Inno Setup and make `ISCC.exe` accessible on `PATH`.
+On a Windows development machine, install Python 3.15 and make sure Tkinter is available. If you want the installer, install Inno Setup and make `ISCC.exe` accessible on `PATH`.
 
 From the repository root in PowerShell:
 
@@ -388,7 +388,7 @@ The workflow produces a release-signed APK and App Bundle only when the required
 Run the Python unit and integration tests from the repository root:
 
 ```powershell
-py -3.14 -m unittest -v `
+py -3.15 -m unittest -v `
   test_mysql_idle.py `
   test_mobile_companion.py `
   test_feature_governor.py `
