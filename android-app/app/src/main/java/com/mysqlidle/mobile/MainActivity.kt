@@ -232,6 +232,27 @@ class MainActivity : Activity() {
             .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0').uppercase() }
     }.getOrNull()
 
+    /**
+     * A pinned self-signed desktop certificate may produce SSL_UNTRUSTED. Only that
+     * error is acceptable: never proceed if Android also reports expiry, date,
+     * hostname, or another certificate validation failure.
+     *
+     * Checking primaryError alone is insufficient because an SslError can contain
+     * more than one certificate error.
+     */
+    private fun hasOnlyUntrustedCertificateError(error: SslError): Boolean {
+        if (!error.hasError(SslError.SSL_UNTRUSTED)) return false
+
+        val disallowedErrors = intArrayOf(
+            SslError.SSL_NOTYETVALID,
+            SslError.SSL_EXPIRED,
+            SslError.SSL_IDMISMATCH,
+            SslError.SSL_DATE_INVALID,
+            SslError.SSL_INVALID
+        )
+        return disallowedErrors.none { error.hasError(it) }
+    }
+
     private fun showWebView(uri: Uri) {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -339,9 +360,12 @@ class MainActivity : Activity() {
 
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                 val actualFingerprint = certificateFingerprint(error)
-                val isOnlyUntrustedCertificate = error.primaryError == SslError.SSL_UNTRUSTED
-                if (isOnlyUntrustedCertificate && actualFingerprint != null &&
-                    actualFingerprint.equals(pinnedFingerprint, ignoreCase = true)) {
+                val onlyUntrustedError = hasOnlyUntrustedCertificateError(error)
+                val fingerprintMatches = actualFingerprint != null &&
+                    actualFingerprint.equals(pinnedFingerprint, ignoreCase = true)
+                if (onlyUntrustedError && fingerprintMatches) {
+                    // This is the exact pinned desktop certificate, and Android reported
+                    // no expiry, hostname, or date validation errors.
                     handler.proceed()
                     return
                 }
@@ -350,10 +374,10 @@ class MainActivity : Activity() {
                 loadingBar.visibility = View.GONE
                 loadingStatus.text = if (actualFingerprint == null) {
                     "TLS certificate could not be inspected. Connection blocked."
-                } else if (isOnlyUntrustedCertificate) {
+                } else if (onlyUntrustedError && !fingerprintMatches) {
                     "TLS certificate fingerprint mismatch. Compare the complete fingerprint with the value displayed on the desktop; connection blocked."
                 } else {
-                    "TLS certificate date or hostname validation failed. Check the device clock and desktop URL; connection blocked."
+                    "TLS certificate validation failed (expiry, date, hostname, or another SSL error). Connection blocked."
                 }
                 loadingStatus.visibility = View.VISIBLE
                 refreshButton.isEnabled = true
