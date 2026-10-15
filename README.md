@@ -68,22 +68,22 @@ These controls reduce risk but do not replace least-privilege database accounts,
 
 ## Latest downloads
 
-The current published build is **Build 120**. Open the [Build 120 release page](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/tag/v3.0.0-build.120) for the full asset list and checksum manifest, or visit [all releases](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases).
+Open the [GitHub Releases page](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases) and select the newest successful **MySQL IDLE 3.0 Build N** release. Release numbers increase as CI runs; don't rely on an older hard-coded build number. Each release includes a `SHA256SUMS` manifest.
 
-| Package | Download | Intended use |
+| Package | Asset filename | Intended use |
 | --- | --- | --- |
-| Windows installer | [MySQLIDLE-Setup.exe](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/download/v3.0.0-build.120/MySQLIDLE-Setup.exe) | Standard per-user Windows installation |
-| Windows portable executable | [MySQLIDLE_Portable.exe](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/download/v3.0.0-build.120/MySQLIDLE_Portable.exe) | Run without using the installer |
-| Windows application folder | [MySQLIDLE-Folder.zip](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/download/v3.0.0-build.120/MySQLIDLE-Folder.zip) | Extract the whole folder and keep its files together |
-| Android APK | [MySQLIDLE-Mobile-release.apk](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/download/v3.0.0-build.120/MySQLIDLE-Mobile-release.apk) | Direct Android installation/testing |
-| Android App Bundle | [MySQLIDLE-Mobile-release.aab](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/download/v3.0.0-build.120/MySQLIDLE-Mobile-release.aab) | Upload to Google Play Console; **not directly installable** |
-| SHA-256 manifest | [SHA256SUMS](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/download/v3.0.0-build.120/SHA256SUMS) | Check downloaded files against published hashes |
+| Windows installer | `MySQLIDLE-Setup.exe` | Standard Windows installation |
+| Windows portable executable | `MySQLIDLE_Portable.exe` | Run without installing |
+| Windows application folder | `MySQLIDLE-Folder.zip` | Extract the entire folder and keep its files together |
+| Android APK | `MySQLIDLE-Mobile-release.apk` | Direct Android installation/testing |
+| Android App Bundle | `MySQLIDLE-Mobile-release.aab` | Upload to Google Play Console; **not directly installable** |
+| SHA-256 manifest | `SHA256SUMS` | Verify downloaded assets |
+
+For Windows, inspect `WINDOWS-SIGNING-STATUS.txt` before distributing the installer. If a release says the Windows files are unsigned, Windows SmartScreen may show an unknown-publisher warning.
 
 ### Installation warning note
 
-The APK is signed and the release workflow checks its signature, permissions, and launch behavior. **That does not guarantee Google Play Protect will classify it as safe.** If Android explicitly says the app is harmful, cancel the installation rather than overriding the warning. A new build or valid signature does not automatically clear Google's classification. Submit an incorrect classification through Google's [official app-verification appeal process](https://support.google.com/googleplay/android-developer/answer/2992033), and use Google Play distribution for broader public availability. Do not disable Play Protect.
-
-Windows files may also trigger SmartScreen or other reputation warnings if they are not signed with a trusted publisher certificate. Check `WINDOWS-SIGNING-STATUS.txt` in the release assets. See [SIGNING.md](SIGNING.md) for signing setup and release details.
+The APK is signed and the release workflow checks its signature, target API, permissions, and launch behavior. **That does not guarantee Google Play Protect will classify it as safe.** If Android explicitly says the app is harmful, cancel installation rather than overriding the warning. A new build or valid signature does not automatically clear Google's classification. Submit a suspected false positive through Google's [official app-verification appeal process](https://support.google.com/googleplay/android-developer/answer/2992033); do not disable Play Protect.
 
 ## System requirements
 
@@ -276,7 +276,7 @@ The Android app is a companion interface; **the MySQL connection is made by the 
 
 ### On Android
 
-1. Install the signed `MySQLIDLE-Mobile-release.apk` from the [Build 120 release](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/tag/v3.0.0-build.120), or install the app through your approved Google Play testing/distribution track.
+1. Install the signed `MySQLIDLE-Mobile-release.apk` from the [GitHub Releases page](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases), or install the app through your approved Google Play testing/distribution track.
 2. Open MySQL IDLE Mobile.
 3. Enter the HTTPS address shown on Windows (for example, `https://192.168.1.20:8765`).
 4. Type the full SHA-256 certificate fingerprint shown on the desktop. Compare it carefully; do not accept a mismatch.
@@ -297,6 +297,43 @@ The Android app is a companion interface; **the MySQL connection is made by the 
 The companion binds to a selected private IPv4 interface, rejects wildcard/public binds, checks Host/Origin headers, limits concurrent handlers and request sizes, and aborts result exports larger than 512 MiB. These limits are not a reason to expose the service to the public internet.
 
 Do **not** use router port forwarding or expose this service on public Wi-Fi. For remote access, use a trusted VPN or private tunnel, and keep the desktop protected. Stop the companion when it is not needed.
+
+## Publish to Google Play Console
+
+### Before upload
+
+- Use the signed `MySQLIDLE-Mobile-release.aab` from the newest successful main-branch GitHub release. **Do not upload a debug AAB or the APK** to Play Console.
+- The package ID is `com.mysqlidle.mobile`; the current release configuration targets Android 16 / API 36 and supports Android API 24 and later.
+- Check the run summary confirms the Android signing key was restored/validated, the AAB build succeeded, and the AAB signature was verified. Keep the signing key and passwords private; never commit them to Git.
+- Open **Play Console → Create app** (or select the existing app). Use the exact same package ID. Fill the default language, app name, app/game type, free/paid choice, developer contact details, and declarations.
+
+### Store listing and policy forms
+
+Complete the **Main store listing** with an accurate description of MySQL IDLE Mobile as a companion that connects over a trusted private LAN to the MySQL IDLE Windows desktop app. It is not a standalone database server. Upload the required app icon, phone screenshots, feature graphic if requested, short/full descriptions, and support/contact information.
+
+In **App content**, finish the privacy policy, ads declaration, app access instructions, target audience/content, content rating, and any other declarations shown. Complete the **Data safety** form truthfully from the actual app behavior. The Android manifest currently requests only `INTERNET`; however, the app transmits the temporary pairing code, master-password verification input, MySQL connection credentials, SQL requests and query results to the user-configured Windows companion over certificate-pinned HTTPS on the private network. Those fields are not intended to be sent to a MySQL IDLE cloud service, and credentials are not saved in Android connection preferences, but network transmission still needs to be evaluated under Google's exact Data safety definitions. Do not select “no data collected” just because the app does not use analytics or a cloud backend; review [Google's Data safety guidance](https://support.google.com/googleplay/android-developer/answer/10787469).
+
+**App access matters for review:** explain that the app requires the Windows companion to be enabled, both devices on the same trusted private network, a current HTTPS certificate fingerprint, the Windows master password, and a temporary pairing code. Provide working reviewer access or a safe review/demo plan if requested. Do not expose the companion service to the public internet to make review easier; the app is designed for private-network use.
+
+### Create the internal testing release
+
+1. In Play Console, open **Test and release → Testing → Internal testing → Create new release**.
+2. Upload `MySQLIDLE-Mobile-release.aab` from the newest successful GitHub release.
+3. Use a release name such as `MySQL IDLE 3.0 API 36 internal test`.
+4. Add release notes, review all Play Console messages, then save and roll out the internal test.
+5. Open the **Testers** tab, create an email list, add tester Google accounts (internal testing supports up to 100 testers), save, and copy the opt-in link. Testers must opt in through that link and install the app from Google Play to validate Play delivery.
+
+After rollout, confirm the Play-installed app launches, shows the branded connection screen, and can pair with the Windows desktop companion. Test certificate fingerprint matching, wrong-password rejection, disconnect/session expiry, and a successful MySQL connection over the private LAN.
+
+### Production access and publication
+
+If your developer account is a **personal account created after 13 November 2023**, Google requires a closed test with at least 12 testers opted in continuously for 14 days before you can apply for production access. Internal testing alone does not satisfy that requirement. Follow **Dashboard → Apply for production** once the closed-test criteria are met, and answer the test, app, and production-readiness questions. See [Google's current testing requirement](https://support.google.com/googleplay/android-developer/answer/14151465).
+
+When production access is available, finish any outstanding dashboard tasks, create a **Production** release, upload the same verified AAB with a higher version code for future updates, review the countries/regions and rollout details, and submit for review.
+
+### Signing-key continuity — read before first Play release
+
+Google Play App Signing uses an app-signing key for the APKs delivered by Google Play and an upload key to authenticate AAB uploads. The GitHub APK is signed by the project's existing self-managed release key. When enrolling in Play App Signing, deliberately choose the existing app-signing key/import path when appropriate and compare the certificate fingerprints before publishing. If Google Play starts signing deliveries with a different app-signing key, users who installed the GitHub APK may be unable to update that installation directly from Play. Read [Google Play App Signing](https://support.google.com/googleplay/android-developer/answer/9842756) and [SIGNING.md](SIGNING.md) before confirming the choice.
 
 ## Security and privacy
 
