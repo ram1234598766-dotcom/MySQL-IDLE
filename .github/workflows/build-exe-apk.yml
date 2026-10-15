@@ -46,7 +46,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Restore source files
-        run: python tools/restore_sources.py
+        run: '& $env:MYSQLIDLE_PYTHON tools/restore_sources.py'
       - name: Commit restored sources
         shell: bash
         run: |
@@ -85,15 +85,16 @@ jobs:
           & $managerCommand exec -3.15 -m venv .venv
           if ($LASTEXITCODE -ne 0) { throw "Python 3.15.0 virtual environment creation failed." }
           Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\.venv\Scripts"
+          Add-Content -Path $env:GITHUB_ENV -Value "MYSQLIDLE_PYTHON=$env:GITHUB_WORKSPACE\.venv\Scripts\python.exe"
           & ".\.venv\Scripts\python.exe" --version
       - name: Restore source payload when bootstrapping an empty repo
         run: python tools/restore_sources.py
       - name: Install build dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pyinstaller==6.22.3 pillow==12.3.0
+          & $env:MYSQLIDLE_PYTHON -m pip install --upgrade pip
+          & $env:MYSQLIDLE_PYTHON -m pip install -r requirements.txt pyinstaller==6.22.3 pillow==12.3.0
       - name: Generate branded Windows assets
-        run: python tools/generate_brand_assets.py
+        run: '& $env:MYSQLIDLE_PYTHON tools/generate_brand_assets.py'
       - name: Run regression tests
         shell: pwsh
         run: |
@@ -114,7 +115,7 @@ jobs:
           # Test outcome is determined by ci-test-status.txt; do not let PowerShell
           # promote a native Python exit code into a terminating error before the gate.
           $PSNativeCommandUseErrorActionPreference = $false
-          python .\run_ci_tests.py
+          & $env:MYSQLIDLE_PYTHON .\run_ci_tests.py
           if ((Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests failed.'
           }
@@ -129,11 +130,11 @@ jobs:
             throw 'Desktop regression tests did not pass.'
           }
       - name: Compile Python modules
-        run: python -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py
+        run: '& $env:MYSQLIDLE_PYTHON -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
       - name: Build one-folder desktop app
-        run: python -m PyInstaller --clean --noconfirm mysql_idle.spec
+        run: '& $env:MYSQLIDLE_PYTHON -m PyInstaller --clean --noconfirm mysql_idle.spec'
       - name: Build portable single-file EXE
-        run: python -m PyInstaller --clean --noconfirm mysql_idle_portable.spec
+        run: '& $env:MYSQLIDLE_PYTHON -m PyInstaller --clean --noconfirm mysql_idle_portable.spec'
       - name: Smoke-test packaged Windows executables
         shell: pwsh
         run: |
