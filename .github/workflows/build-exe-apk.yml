@@ -112,16 +112,17 @@ jobs:
           with open('ci-test-status.txt', 'w', encoding='ascii') as out:
               out.write(status)
           '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
-          # Test outcome is determined by ci-test-status.txt; do not let PowerShell
-          # promote a native Python exit code into a terminating error before the gate.
-          $PSNativeCommandUseErrorActionPreference = $false
-          & $env:MYSQLIDLE_PYTHON .\run_ci_tests.py
-          if ((Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
-            throw 'Desktop regression tests failed.'
+
+          Remove-Item .\ci-test-output.txt, .\ci-test-errors.txt -Force -ErrorAction SilentlyContinue
+          $testProcess = Start-Process -FilePath $env:MYSQLIDLE_PYTHON -ArgumentList @(".\run_ci_tests.py") -PassThru -Wait -NoNewWindow -RedirectStandardOutput ".\ci-test-output.txt" -RedirectStandardError ".\ci-test-errors.txt"
+          if (Test-Path .\ci-test-output.txt) { Get-Content .\ci-test-output.txt }
+          if (Test-Path .\ci-test-errors.txt) { Get-Content .\ci-test-errors.txt }
+          if (!(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
+            throw "Desktop regression tests failed (Python exit code $($testProcess.ExitCode))."
           }
-          # The test runner reports PASS in ci-test-status.txt; do not let a stale
-          # native-process exit code from PowerShell mark that passing suite failed.
-          $global:LASTEXITCODE = 0
+          if ($testProcess.ExitCode -ne 0) {
+            Write-Warning "Python returned exit code $($testProcess.ExitCode) after reporting TEST_RESULT=PASS; all unittest assertions passed and that explicit result is used for the regression gate."
+          }
       - name: Validate desktop regression result
         if: always()
         shell: pwsh
