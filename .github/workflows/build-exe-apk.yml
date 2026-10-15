@@ -555,6 +555,16 @@ jobs:
           apk = Path(sys.argv[1])
           sdk = Path(os.environ["ANDROID_HOME"])
           tool = sdk / "build-tools" / "35.0.0" / "aapt"
+          badging = subprocess.run(
+              [str(tool), "dump", "badging", str(apk)],
+              check=True, capture_output=True, text=True
+          )
+          import re
+          match = re.search(r"targetSdkVersion:'(\\d+)'", badging.stdout)
+          if not match or int(match.group(1)) < 36:
+              raise SystemExit("APK must target Android API level 36 or higher.")
+          print("Target API check passed:", match.group(1))
+
           result = subprocess.run(
               [str(tool), "dump", "permissions", str(apk)],
               check=True, capture_output=True, text=True
