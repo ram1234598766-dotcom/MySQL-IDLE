@@ -316,9 +316,9 @@ jobs:
       - uses: android-actions/setup-android@v4
       - uses: gradle/actions/setup-gradle@v5
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.11.1"
       - name: Install Android platform and build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Report Android signing readiness
         if: github.event_name != 'pull_request'
         shell: bash
@@ -577,10 +577,10 @@ jobs:
         run: |
           set -euo pipefail
           test -s "$APK_SMOKE_PATH"
-          sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
+          sdkmanager "emulator" "system-images;android-36;google_apis;x86_64"
           export ANDROID_AVD_HOME="$HOME/.android/avd"
           mkdir -p "$ANDROID_AVD_HOME"
-          printf "no\n" | avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-35;google_apis;x86_64"
+          printf "no\n" | avdmanager create avd --force -n mysqlidle-smoke -k "system-images;android-36;google_apis;x86_64"
           if [[ ! -s "$ANDROID_AVD_HOME/mysqlidle-smoke.ini" ]]; then
             avdmanager list avd || true
             find "$HOME/.android" -maxdepth 3 -type f -name "*.ini" -print || true
