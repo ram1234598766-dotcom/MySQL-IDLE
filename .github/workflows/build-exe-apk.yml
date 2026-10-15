@@ -99,13 +99,14 @@ jobs:
         shell: pwsh
         run: |
           @'
+          import sys
           import unittest
           suite = unittest.TestSuite()
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_mysql_idle'))
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_password_auth'))
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_feature_governor'))
           suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_packaging_branding'))
-          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          result = unittest.TextTestRunner(verbosity=2, stream=sys.stdout).run(suite)
           status = 'PASS' if result.wasSuccessful() else 'FAIL'
           print('TEST_RESULT=' + status)
           with open('ci-test-status.txt', 'w', encoding='ascii') as out:
