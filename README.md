@@ -109,7 +109,7 @@ The APK is signed and the release workflow checks its signature, target API, per
 
 ## Install on Windows
 
-1. Download [MySQLIDLE-Setup.exe](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases/download/v3.0.0-build.120/MySQLIDLE-Setup.exe) from Build 120.
+1. Download `MySQLIDLE-Setup.exe` from the [latest successful GitHub release](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases).
 2. Run the installer. The default installation is under your Windows user's local application-data programs directory and is designed for per-user installation.
 3. Use the Start Menu or desktop shortcut to launch **MySQL IDLE**.
 4. On first launch, create the master password described below.
