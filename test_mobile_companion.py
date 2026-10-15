@@ -137,6 +137,8 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertIn('id="masterPassword"', body)
             self.assertIn('id="masterPasswordToggle"', body)
             self.assertIn("master password you set on Windows", body)
+            self.assertIn("masterPassword:$('masterPassword').value", body)
+            self.assertNotIn("sessionStorage.setItem('mysqlIdleMobileSession'", body)
             self.assertIn('id="historyBackBtn"', body)
             self.assertIn('id="historyForwardBtn"', body)
             self.assertIn('id="templateSelect"', body)
