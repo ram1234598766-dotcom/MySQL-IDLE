@@ -50,7 +50,11 @@ def is_password_record(record: Any) -> bool:
     """Return True only for a supported and bounded stored verifier record."""
     if not isinstance(record, dict):
         return False
-    if record.get("version") != 1 or record.get("algorithm") != ALGORITHM:
+    if set(record) != {"version", "algorithm", "iterations", "salt", "digest"}:
+        return False
+    if type(record.get("version")) is not int or record.get("version") != 1:
+        return False
+    if record.get("algorithm") != ALGORITHM:
         return False
     iterations = record.get("iterations")
     if type(iterations) is not int or not MIN_ITERATIONS <= iterations <= MAX_ITERATIONS:
