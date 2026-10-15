@@ -15,7 +15,7 @@ class PackagingBrandingTests(unittest.TestCase):
                 self.assertIn("icon='assets/mysqlidle.ico'", source)
 
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
-        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo-reference.webp"', generator)
         self.assertTrue((ROOT / "assets" / "mysqlidle-logo.png").is_file())
 
     def test_google_play_assets_have_required_sizes(self):
@@ -28,7 +28,7 @@ class PackagingBrandingTests(unittest.TestCase):
             "phone-03-mysql-connection-1080x1920.png": (1080, 1920),
             "phone-04-sql-editor-and-results-1080x1920.png": (1080, 1920),
         }
-        source_path = ROOT / "assets" / "mysqlidle-logo.png"
+        source_path = ROOT / "assets" / "mysqlidle-logo-reference.webp"
         with Image.open(source_path) as source_image:
             source = source_image.convert("RGBA")
         exact_outputs = {
@@ -103,27 +103,27 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
         self.assertNotIn("Tasks: desktopicon", source)
 
-    def test_user_supplied_96px_logo_is_embedded_without_upscaling_in_android(self):
+    def test_readme_logo_is_embedded_at_native_resolution_in_android(self):
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
-        logo = ROOT / "assets" / "mysqlidle-logo.png"
+        logo = ROOT / "assets" / "mysqlidle-logo-reference.webp"
         android_logo = ROOT / "android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
-        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
-        self.assertIn("original supplied 96x96 logo", generator)
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo-reference.webp"', generator)
         play_generator = (ROOT / "tools" / "generate_play_store_assets.py").read_text(encoding="utf-8")
-        self.assertIn('root/"assets"/"mysqlidle-logo.png"', play_generator)
-        self.assertIn("shutil.copyfile(src, android)", play_generator)
+        self.assertIn('root/"assets"/"mysqlidle-logo-reference.webp"', play_generator)
+        self.assertIn("with Image.open(src) as source_logo", play_generator)
         self.assertNotIn("mysqlidle-logo-highres.png", generator)
         self.assertNotIn("mysqlidle-logo-highres.png", play_generator)
         self.assertTrue(logo.is_file())
         self.assertTrue(android_logo.is_file())
-        self.assertEqual(logo.read_bytes(), android_logo.read_bytes(),
-                         "Android drawable must be byte-for-byte identical to the original 96x96 PNG.")
-        with Image.open(logo) as image:
-            self.assertEqual(image.size, (96, 96))
-            self.assertEqual(image.format, "PNG")
-            self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
+        with Image.open(logo) as source_image:
+            source = source_image.convert("RGBA")
+            self.assertGreater(source_image.width, 96, "README must use the high-resolution source, not the old 96px thumbnail.")
+            self.assertEqual(source_image.format, "WEBP")
         with Image.open(android_logo) as image:
-            self.assertEqual(image.size, (96, 96))
+            self.assertEqual(image.size, source.size)
+            self.assertEqual(list(image.convert("RGBA").getdata()), list(source.getdata()),
+                             "Android drawable pixels must match the README logo source at native resolution.")
+
     def test_android_launcher_and_splash_use_the_supplied_logo(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
         self.assertIn('android:icon="@mipmap/ic_launcher"', manifest)
