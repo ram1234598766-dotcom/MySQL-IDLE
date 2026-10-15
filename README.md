@@ -54,6 +54,17 @@ The Windows **Connect to MySQL** dialog defaults to certificate-optional TLS for
 
 The mobile SQL editor includes previous/next query history (at most 50 entries in page memory, cleared on disconnect or session expiry) and quick templates for server version, current database, database/table lists, and server time. Mobile query history is never written to persistent browser storage. On Windows, SQL history remains in memory by default and is only persisted after setting `MYSQLIDLE_SAVE_HISTORY=1` before starting the app. Review templates before execution; SQL runs with the connected MySQL account's permissions.
 
+## Android install warnings and trusted distribution
+
+The GitHub release contains two different Android files:
+
+- `MySQLIDLE-Mobile-release.apk` is the signed APK for direct testing/sideloading. Android, Chrome, or Play Protect can still show a warning for an app installed from outside a recognized store. A valid signature proves package integrity and signer continuity; it does not certify the app as malware-free or force security warnings to disappear.
+- `MySQLIDLE-Mobile-release.aab` is a signed Android App Bundle for uploading to Google Play Console. It is **not installable directly**. For regular users, publish the bundle through a verified developer account and install MySQL IDLE from its Play Store listing after Google's review. This is the preferred way to reduce warnings associated with unfamiliar direct APK downloads.
+
+The Android manifest currently requests only `android.permission.INTERNET`; the app does not request SMS, notification-listener, accessibility-service, contacts, phone, or broad-storage permissions. CI verifies the APK signature and the AAB signature before publishing either release asset. Security products independently decide whether to display warnings, so no APK-only change can guarantee that every vendor/device will show no warning.
+
+If Google Play Protect explicitly says **“Harmful app blocked”** rather than “scan recommended” or “unknown app,” do not ask users to bypass it. Review Google's [official warning guidance](https://developers.google.com/android/play-protect/warning-dev-guidance) and submit a Play Protect appeal if the signed release is a false positive. The warning text matters because the different prompts have different causes and remedies.
+
 ## Feature Governance
 
 MySQL IDLE now has a shared local policy engine for the Windows SQL worker and paired Android companion. Open **Tools → Feature Governance** on Windows to configure the session policy and review recent decisions.
