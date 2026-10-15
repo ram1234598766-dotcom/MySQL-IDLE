@@ -28,12 +28,23 @@ class PackagingBrandingTests(unittest.TestCase):
             "phone-03-mysql-connection-1080x1920.png": (1080, 1920),
             "phone-04-sql-editor-and-results-1080x1920.png": (1080, 1920),
         }
+        source_path = ROOT / "assets" / "mysqlidle-logo.png"
+        with Image.open(source_path) as source_image:
+            source = source_image.convert("RGBA")
+        exact_outputs = {
+            "app-icon-512.png": source.resize((512, 512), Image.Resampling.LANCZOS),
+            "feature-graphic-1024x500.png": source.resize((1024, 500), Image.Resampling.LANCZOS),
+        }
         for name, size in expected.items():
             path = out / name
             with self.subTest(name=name):
                 self.assertTrue(path.is_file(), f"Missing generated asset: {path}")
                 with Image.open(path) as image:
                     self.assertEqual(image.size, size)
+                    if name in exact_outputs:
+                        self.assertEqual(image.mode, "RGBA")
+                        self.assertEqual(list(image.getdata()), list(exact_outputs[name].getdata()),
+                                         f"{name} must be only a direct resize of the uploaded image")
                 self.assertLessEqual(path.stat().st_size, 8 * 1024 * 1024)
         for folder in ("tablet-7-inch", "tablet-10-inch", "desktop"):
             files = list((out / folder).glob("*.png"))
@@ -99,16 +110,17 @@ class PackagingBrandingTests(unittest.TestCase):
         android_logo = ROOT / "android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
         self.assertIn('HIRES_LOGO_SOURCE = ASSETS / "mysqlidle-logo-highres.png"', generator)
         play_generator = (ROOT / "tools" / "generate_play_store_assets.py").read_text(encoding="utf-8")
-        reference = ROOT / "assets" / "mysqlidle-logo-reference.webp"
-        self.assertIn('root/"assets"/"mysqlidle-logo-reference.webp"', play_generator)
+        reference = ROOT / "assets" / "mysqlidle-logo.png"
+        self.assertIn('root/"assets"/"mysqlidle-logo.png"', play_generator)
         self.assertTrue(logo.is_file())
         self.assertTrue(reference.is_file())
         self.assertTrue(hires_logo.is_file())
         self.assertTrue(android_logo.is_file())
         self.assertEqual(hires_logo.read_bytes(), android_logo.read_bytes())
         with Image.open(reference) as image:
-            self.assertEqual(image.size, (384, 367))
-            self.assertEqual(image.format, "WEBP")
+            self.assertEqual(image.size, (96, 96))
+            self.assertEqual(image.format, "PNG")
+            self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
         with Image.open(hires_logo) as image:
             self.assertEqual(image.size, (512, 512))
             self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
