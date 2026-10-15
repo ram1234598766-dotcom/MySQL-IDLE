@@ -16,6 +16,8 @@ class PackagingBrandingTests(unittest.TestCase):
 
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
         self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
+        play_generator = (ROOT / "tools" / "generate_play_store_assets.py").read_text(encoding="utf-8")
+        self.assertIn('"mysqlidle-logo-source.webp"', play_generator)
         self.assertTrue((ROOT / "assets" / "mysqlidle-logo.png").is_file())
 
     def test_google_play_assets_have_required_sizes(self):
@@ -103,8 +105,13 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertTrue(hires_logo.is_file())
         self.assertTrue(android_logo.is_file())
         self.assertEqual(hires_logo.read_bytes(), android_logo.read_bytes())
+        source_logo = ROOT / "assets" / "mysqlidle-logo-source.webp"
+        self.assertTrue(source_logo.is_file())
+        with Image.open(source_logo) as image:
+            self.assertEqual(image.size, (512, 512))
+            self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
         with Image.open(logo) as image:
-            self.assertEqual(image.size, (96, 96))
+            self.assertEqual(image.size, (512, 512))
             self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
         with Image.open(android_logo) as image:
             self.assertEqual(image.size, (512, 512))
