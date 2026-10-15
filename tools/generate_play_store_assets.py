@@ -31,8 +31,16 @@ def bg(size,light=False):
     return im
 
 def logo(path,size=512):
+    """Extract the uploaded rounded-square badge, masking the mockup background."""
     with Image.open(path) as src:
-        src.load(); im=src.convert("RGBA").resize((size,size),Image.Resampling.LANCZOS)
+        src.load()
+        base=src.convert("RGBA")
+    mask=Image.new("L",base.size,0)
+    md=ImageDraw.Draw(mask)
+    corner=int(min(base.size)*0.195)
+    md.rounded_rectangle((0,0,base.width-1,base.height-1),radius=corner,fill=255)
+    base.putalpha(mask)
+    im=base.resize((size,size),Image.Resampling.LANCZOS)
     return im.filter(ImageFilter.UnsharpMask(radius=max(1,size//160),percent=110,threshold=3))
 
 def box(d,xy,fill=PANEL,outline=LINE,r=18,w=2): d.rounded_rectangle(xy,radius=r,fill=fill,outline=outline,width=w)
@@ -154,22 +162,19 @@ def wide(path,title,mode):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1]); args=p.parse_args()
-    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo.png"
+    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo-reference.webp"
     if not src.is_file(): raise SystemExit("Required source logo not found: "+str(src))
     out=root/"dist"/"google-play-assets"; out.mkdir(parents=True,exist_ok=True); lg=logo(src)
     # Google Play store icon is opaque and square; round corners are applied by the store.
-    icon=Image.new("RGBA",(512,512),BG+(255,)); icon.alpha_composite(lg.resize((448,448),Image.Resampling.LANCZOS),(32,32)); icon.convert("RGB").save(out/"app-icon-512.png",optimize=True)
+    icon=Image.new("RGBA",(512,512),BG+(255,)); icon.alpha_composite(lg); icon.convert("RGB").save(out/"app-icon-512.png",optimize=True)
     (root/"assets"/"mysqlidle-logo-highres.png").parent.mkdir(exist_ok=True); lg.save(root/"assets"/"mysqlidle-logo-highres.png",format="PNG",optimize=True)
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
     if not android.parent.is_dir(): raise SystemExit("Android icon resource folder missing: "+str(android.parent))
     lg.save(android,format="PNG",optimize=True)
-    fg=bg((1024,500)); d=ImageDraw.Draw(fg)
-    for i in range(5): d.arc((590,i*84,1110,i*84+190),190,320,fill=(30,61,94),width=3)
-    mark=lg.resize((210,210),Image.Resampling.LANCZOS); fg.paste(mark,(64,125),mark); d=ImageDraw.Draw(fg)
-    text(d,(315,114),"MySQL IDLE",62,WHITE,True); text(d,(318,194),"SQL workspace",44,CYAN,True); text(d,(318,257),"for MySQL & MariaDB",31,TEXT)
-    d.line((318,326,890,326),fill=(52,76,108),width=2); box(d,(318,352,620,409),(17,43,62),(41,78,108),22,2); text(d,(469,381),"WINDOWS DESKTOP",19,TEXT,True,"mm")
-    box(d,(639,352,886,409),(17,43,62),(41,78,108),22,2); text(d,(762,381),"ANDROID COMPANION",16,TEXT,True,"mm"); text(d,(318,439),"Pair securely over a trusted private network",20,MUTED)
-    fg.save(out/"feature-graphic-1024x500.png",optimize=True)
+    fg=bg((1024,500)).convert("RGBA")
+    feature_mark=lg.resize((420,420),Image.Resampling.LANCZOS)
+    fg.alpha_composite(feature_mark,((1024-420)//2,(500-420)//2))
+    fg.convert("RGB").save(out/"feature-graphic-1024x500.png",optimize=True)
     for name,fn in [("phone-01-connect-and-verify-1080x1920.png",phone_connect),("phone-02-unlock-and-pair-1080x1920.png",phone_pair),("phone-03-mysql-connection-1080x1920.png",phone_connection),("phone-04-sql-editor-and-results-1080x1920.png",phone_query)]: fn(lg,out/name)
     specs=[("01-sql-editor.png","SQL editor and quick templates","editor"),("02-mysql-connection.png","Connect through the desktop companion","connection"),("03-secure-pairing.png","Pair with a trusted Windows desktop","pairing"),("04-query-results.png","Review results and export CSV","results")]
     for folder in ("tablet-7-inch","tablet-10-inch","desktop"):
@@ -178,7 +183,7 @@ def main():
     files=[]
     for x in sorted(out.rglob("*.png")):
         with Image.open(x) as im: files.append({"file":x.relative_to(out).as_posix(),"width":im.width,"height":im.height,"bytes":x.stat().st_size})
-    manifest={"product":"MySQL IDLE Mobile","notes":["512x512 opaque PNG app icon; rounded corners are not baked in.","1024x500 feature graphic.","Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered previews based on the current UI; verify against the final build on a real device before submission.","XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists."],"assets":files}
+    manifest={"product":"MySQL IDLE Mobile","notes":["512x512 opaque PNG app icon made from the uploaded MySQL IDLE dolphin badge.","1024x500 feature graphic.","Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered previews based on the current UI; verify against the final build on a real device before submission.","XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists."],"assets":files}
     (out/"ASSET-MANIFEST.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
     zip_path=root/"dist"/"MySQLIDLE-Play-Store-Assets.zip"
     with zipfile.ZipFile(zip_path,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
