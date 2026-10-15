@@ -104,22 +104,10 @@ jobs:
       - name: Generate branded Windows assets
         run: '& $env:MYSQLIDLE_PYTHON tools/generate_brand_assets.py'
       - name: Run regression tests
-        shell: pwsh
+        shell: cmd
         run: |
-          $testStdout = Join-Path $env:RUNNER_TEMP "mysqlidle-tests-stdout.txt"
-          $testStderr = Join-Path $env:RUNNER_TEMP "mysqlidle-tests-stderr.txt"
-          Remove-Item $testStdout, $testStderr -Force -ErrorAction SilentlyContinue
-          $testProcess = Start-Process -FilePath $env:MYSQLIDLE_PYTHON -ArgumentList @(
-            "-m", "unittest", "-v",
-            "test_mysql_idle.py", "test_password_auth.py",
-            "test_feature_governor.py", "test_packaging_branding.py"
-          ) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $testStdout -RedirectStandardError $testStderr
-          if (Test-Path $testStdout) { Get-Content $testStdout | ForEach-Object { Write-Host $_ } }
-          if (Test-Path $testStderr) { Get-Content $testStderr | ForEach-Object { Write-Host $_ } }
-          Write-Host "Python regression test exit code: $($testProcess.ExitCode)"
-          if ($testProcess.ExitCode -ne 0) {
-            throw "Desktop regression tests failed with exit code $($testProcess.ExitCode)."
-          }
+          "%MYSQLIDLE_PYTHON%" -m unittest -v test_mysql_idle.py test_password_auth.py test_feature_governor.py test_packaging_branding.py
+          if errorlevel 1 exit /b 1
       - name: Compile Python modules
         shell: pwsh
         run: '& $env:MYSQLIDLE_PYTHON -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
