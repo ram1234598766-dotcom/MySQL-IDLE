@@ -112,6 +112,7 @@ jobs:
               out.write(status)
           '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
           python .\run_ci_tests.py 2>&1 | Tee-Object -FilePath .\ci-test-output.txt
+          Get-Content .\ci-test-output.txt
           if (!(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests failed.'
           }
