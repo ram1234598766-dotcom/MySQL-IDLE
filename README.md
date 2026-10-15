@@ -103,7 +103,7 @@ Windows files may also trigger SmartScreen or other reputation warnings if they 
 ### To build the Android app
 
 - JDK 17.
-- Android SDK Platform 35 and Android build tools.
+- Android SDK Platform 36 and Android build tools.
 - Android Gradle plugin and Gradle versions defined by `android-app/build.gradle.kts` and the CI workflow.
 - A signing keystore and its secrets for a release-signed APK/AAB; debug builds are for development/testing only.
 
@@ -365,7 +365,7 @@ Outputs:
 
 ### Build the Android debug app
 
-Install JDK 17 and Android SDK Platform 35/build tools. From the repository root:
+Install JDK 17 and Android SDK Platform 36/build tools. From the repository root:
 
 ```powershell
 Set-Location android-app
