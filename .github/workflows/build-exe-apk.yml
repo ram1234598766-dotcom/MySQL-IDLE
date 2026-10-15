@@ -520,7 +520,7 @@ jobs:
           test -s "$apk"
           test -s "$bundle"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
-          jarsigner -verify -verbose "$bundle"
+          jarsigner -verify "$bundle"
           mkdir -p dist
           cp "$apk" dist/MySQLIDLE-Mobile-release.apk
           cp "$bundle" dist/MySQLIDLE-Mobile-release.aab
@@ -532,16 +532,46 @@ jobs:
               -pass env:ANDROID_KEYSTORE_PASSWORD
             echo "Encrypted replacement-key backup staged for the CI artifact only."
           fi
-      - name: Build debug APK when release signing is not configured
+      - name: Build debug APK and App Bundle when release signing is not configured
         if: env.ANDROID_SIGNING_ENABLED != 'true'
         working-directory: android-app
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon assembleDebug bundleDebug
       - name: Stage debug APK for CI only
         if: env.ANDROID_SIGNING_ENABLED != 'true'
         run: |
           mkdir -p dist
           cp android-app/app/build/outputs/apk/debug/app-debug.apk dist/MySQLIDLE-Mobile-debug.apk
           echo "APK_SMOKE_PATH=dist/MySQLIDLE-Mobile-debug.apk" >> "$GITHUB_ENV"
+      - name: Verify APK requests only expected Android permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$APK_SMOKE_PATH" <<'PY'
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          apk = Path(sys.argv[1])
+          aapt = Path(os.environ["ANDROID_HOME"]) if False else None
+          sdk = Path(__import__("os").environ["ANDROID_HOME"])
+          tool = sdk / "build-tools" / "35.0.0" / "aapt"
+          result = subprocess.run(
+              [str(tool), "dump", "permissions", str(apk)],
+              check=True, capture_output=True, text=True
+          )
+          print(result.stdout, end="")
+          permissions = []
+          for line in result.stdout.splitlines():
+              if "uses-permission" in line and "name='" in line:
+                  permissions.append(line.split("name='", 1)[1].split("'", 1)[0])
+          allowed = {"android.permission.INTERNET"}
+          unexpected = sorted(set(permissions) - allowed)
+          if unexpected:
+              raise SystemExit("Unexpected Android permissions: " + ", ".join(unexpected))
+          if "android.permission.INTERNET" not in permissions:
+              raise SystemExit("Expected INTERNET permission was not found.")
+          print("Permission check passed: only INTERNET is requested.")
+          PY
       - name: Smoke-test APK on Android emulator
         shell: bash
         run: |
