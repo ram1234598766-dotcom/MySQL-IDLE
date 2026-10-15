@@ -54,6 +54,12 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from feature_governor import APPROVAL_TTL_SECONDS, FeatureGovernor
+from password_auth import (
+    MIN_PASSWORD_LENGTH as MIN_MASTER_PASSWORD_LENGTH,
+    load_password_record,
+    save_password_record,
+    verify_password,
+)
 
 try:
     import pymysql
@@ -97,6 +103,7 @@ def get_app_data_dir():
 APP_DATA_DIR = get_app_data_dir()
 LOG_DIR = APP_DATA_DIR / "logs"
 CONFIG_PATH = APP_DATA_DIR / "settings.json"
+MASTER_PASSWORD_PATH = APP_DATA_DIR / "master_password.json"
 LEGACY_CONFIG_PATH = Path.home() / ".mysql_idle.json"
 # SQL text can contain literals or tokens. Disk persistence is opt-in.
 SAVE_HISTORY = os.environ.get("MYSQLIDLE_SAVE_HISTORY", "").strip().lower() in {"1", "true", "yes"}
