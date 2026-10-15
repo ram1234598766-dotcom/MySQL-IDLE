@@ -4,7 +4,7 @@ A desktop SQL shell for MySQL/MariaDB with background query execution, disk-back
 
 ## Download builds
 
-Push a commit to main or run the GitHub Actions workflow to build and test both platforms. Pull requests build the desktop apps and an Android debug APK for testing. Release publication requires all four Android signing secrets described in SIGNING.md; CI verifies the release APK signature before publishing it.
+Push a commit to main or run the GitHub Actions workflow to build and test both platforms. Pull requests build the desktop apps and an Android debug APK for testing. Release publication requires all four Android signing secrets described in SIGNING.md; CI verifies the release APK and Android App Bundle before publishing both. The `.apk` is for direct installation; the `.aab` is the package to upload to Google Play Console.
 
 Windows EXE, installer, and folder-archive assets are published whenever the Windows build succeeds. If a trusted Windows signing certificate is configured, CI signs and verifies the Windows executables and installer. Otherwise, those Windows files are explicitly marked UNSIGNED in WINDOWS-SIGNING-STATUS.txt. Windows and Android use separate signing identities. A signature does not guarantee SmartScreen warnings disappear immediately. Every published bundle includes a SHA256SUMS manifest for integrity verification.
 
@@ -17,6 +17,10 @@ The exact supplied MySQL IDLE logo image is the shared visual source for Windows
 On first Windows launch, MySQL IDLE asks you to create and confirm a master password of at least 10 characters. You must enter it whenever you start the Windows app again. This is the app-unlock password, not your MySQL server password. The raw password is never saved; MySQL IDLE stores a salted PBKDF2-HMAC-SHA256 verifier in the current user's application-data folder.
 
 Android pairing requires both the same master password and the temporary pairing code shown by **Tools → Android / Mobile Companion** on Windows. A wrong or missing password is rejected by the Windows companion, so the Android SQL interface remains locked. The password is checked over the HTTPS connection after you verify the desktop certificate fingerprint. Android does not persist the password or its pairing token; reopen/refreshing the mobile page requires pairing again. Keep the master password safe—there is no plaintext password to recover.
+
+## Android installation warnings
+
+Android or Google Play Protect may still warn about an APK installed directly from GitHub or another website. A valid signature and clean build checks do not guarantee that Google will immediately recognize an app or avoid a harmful-app false positive. For public distribution, use the signed `MySQLIDLE-Mobile-release.aab` with Google Play Console internal testing/review, keep the established signing identity, and appeal any incorrect Play Protect classification. Do not ask users to disable Play Protect. An `.aab` is an upload package for an app store, not a file to install directly on a phone.
 
 ## Release signing
 
