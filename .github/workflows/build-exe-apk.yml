@@ -398,7 +398,7 @@ jobs:
       - name: Download previous encrypted signing-key backup
         if: env.ANDROID_SIGNING_ENABLED == 'true' && steps.find-signing-backup.outputs.run_id != ''
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: MySQLIDLE-SigningKey-Backup
           run-id: ${{ steps.find-signing-backup.outputs.run_id }}
@@ -758,13 +758,13 @@ jobs:
           fi
       - name: Download signed Android artifact
         if: steps.signing.outputs.ready == 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: MySQLIDLE-Android
           path: release-assets
       - name: Download Windows build artifacts
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.2
         with:
           name: MySQLIDLE-Windows
           path: release-assets
@@ -811,7 +811,7 @@ jobs:
           echo "SHA-256 checksums generated for: ${included[*]}" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish Android-only release
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready != 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
           target_commitish: main
@@ -824,7 +824,7 @@ jobs:
             release-assets/SHA256SUMS
       - name: Publish Android and Windows release assets
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
           target_commitish: main
