@@ -84,6 +84,44 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertNotIn('[UninstallDelete]\nType: filesandordirs; Name: "{app}"', source)
         self.assertNotIn("WizardSilent", source)
 
+    def test_setup_wizard_artwork_uses_the_same_logo_without_redesign(self):
+        generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
+        installer = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo-reference.webp"', generator)
+        self.assertIn("SetupIconFile=assets\\\\mysqlidle.ico", installer)
+        self.assertIn("WizardImageFile=assets\\\\wizard-image.bmp", installer)
+        self.assertIn("WizardSmallImageFile=assets\\\\wizard-small.bmp", installer)
+        self.assertIn("UninstallDisplayIcon={app}\\\\_internal\\\\assets\\\\mysqlidle.ico", installer)
+        self.assertNotIn("_centered_text", generator)
+        self.assertNotIn("SQL WORKSPACE", generator)
+        self.assertNotIn("QUERY", generator)
+        self.assertNotIn("BROWSE", generator)
+        self.assertNotIn("EXPORT", generator)
+
+        source_path = ROOT / "assets" / "mysqlidle-logo-reference.webp"
+        with Image.open(source_path) as source_image:
+            source = source_image.convert("RGBA")
+
+        # The installer side panel contains only the source artwork, fitted proportionally.
+        with Image.open(ROOT / "assets" / "wizard-image.bmp") as actual_panel:
+            self.assertEqual(actual_panel.size, (164, 314))
+            mark = source.copy()
+            mark.thumbnail((154, 154), Image.Resampling.LANCZOS)
+            expected_panel = Image.new("RGB", (164, 314), (11, 24, 42))
+            expected_panel.paste(mark, ((164 - mark.width) // 2, (314 - mark.height) // 2), mark)
+            self.assertEqual(list(actual_panel.convert("RGB").getdata()), list(expected_panel.getdata()),
+                             "Installer wizard must show the same logo, not a separate redesign.")
+
+        # The small wizard badge must also be just the same fitted source image.
+        with Image.open(ROOT / "assets" / "wizard-small.bmp") as actual_small:
+            self.assertEqual(actual_small.size, (55, 55))
+            mark = source.copy()
+            mark.thumbnail((51, 51), Image.Resampling.LANCZOS)
+            expected_small = Image.new("RGB", (55, 55), (248, 250, 252))
+            expected_small.paste(mark, ((55 - mark.width) // 2, (55 - mark.height) // 2), mark)
+            self.assertEqual(list(actual_small.convert("RGB").getdata()), list(expected_small.getdata()),
+                             "Small wizard image must use the same source artwork.")
+
     def test_windows_startup_requires_master_password_and_android_uses_same_verifier(self):
         desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
         companion = (ROOT / "mobile_companion.py").read_text(encoding="utf-8")
