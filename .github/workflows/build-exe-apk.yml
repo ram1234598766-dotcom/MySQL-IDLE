@@ -114,10 +114,10 @@ jobs:
       - name: Generate branded Windows assets
         run: '& $env:MYSQLIDLE_PYTHON tools/generate_brand_assets.py'
       - name: Run regression tests
-        shell: cmd
+        shell: pwsh
         run: |
-          "%MYSQLIDLE_PYTHON%" -m unittest -v test_mysql_idle.py test_password_auth.py test_feature_governor.py test_packaging_branding.py
-          if errorlevel 1 exit /b 1
+          & $env:MYSQLIDLE_PYTHON -m unittest -v test_mysql_idle.py test_password_auth.py test_feature_governor.py test_packaging_branding.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile Python modules
         shell: pwsh
         run: '& $env:MYSQLIDLE_PYTHON -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
