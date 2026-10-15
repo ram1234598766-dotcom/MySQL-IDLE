@@ -31,17 +31,10 @@ def bg(size,light=False):
     return im
 
 def logo(path,size=512):
-    """Extract the uploaded rounded-square badge, masking the mockup background."""
+    """Resize the supplied icon without redesigning, masking, or adding artwork."""
     with Image.open(path) as src:
         src.load()
-        base=src.convert("RGBA")
-    mask=Image.new("L",base.size,0)
-    md=ImageDraw.Draw(mask)
-    corner=int(min(base.size)*0.195)
-    md.rounded_rectangle((0,0,base.width-1,base.height-1),radius=corner,fill=255)
-    base.putalpha(mask)
-    im=base.resize((size,size),Image.Resampling.LANCZOS)
-    return im.filter(ImageFilter.UnsharpMask(radius=max(1,size//160),percent=110,threshold=3))
+        return src.convert("RGBA").resize((size,size),Image.Resampling.LANCZOS)
 
 def box(d,xy,fill=PANEL,outline=LINE,r=18,w=2): d.rounded_rectangle(xy,radius=r,fill=fill,outline=outline,width=w)
 def text(d,xy,s,size=24,color=TEXT,bold=False,anchor=None,mono=False): d.text(xy,s,font=f(size,bold,mono),fill=color,anchor=anchor)
@@ -162,7 +155,7 @@ def wide(path,title,mode):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1]); args=p.parse_args()
-    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo-reference.webp"
+    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo.png"
     if not src.is_file(): raise SystemExit("Required source logo not found: "+str(src))
     out=root/"dist"/"google-play-assets"; out.mkdir(parents=True,exist_ok=True); lg=logo(src)
     # Google Play store icon is opaque and square; round corners are applied by the store.
@@ -171,9 +164,10 @@ def main():
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
     if not android.parent.is_dir(): raise SystemExit("Android icon resource folder missing: "+str(android.parent))
     lg.save(android,format="PNG",optimize=True)
-    fg=bg((1024,500)).convert("RGBA")
-    feature_mark=lg.resize((420,420),Image.Resampling.LANCZOS)
-    fg.alpha_composite(feature_mark,((1024-420)//2,(500-420)//2))
+    # Use the same logo without added text or decoration, centered on a matching navy canvas.
+    fg=Image.new("RGBA",(1024,500),(14,44,77,255))
+    feature_mark=lg.resize((500,500),Image.Resampling.LANCZOS)
+    fg.alpha_composite(feature_mark,((1024-500)//2,0))
     fg.convert("RGB").save(out/"feature-graphic-1024x500.png",optimize=True)
     for name,fn in [("phone-01-connect-and-verify-1080x1920.png",phone_connect),("phone-02-unlock-and-pair-1080x1920.png",phone_pair),("phone-03-mysql-connection-1080x1920.png",phone_connection),("phone-04-sql-editor-and-results-1080x1920.png",phone_query)]: fn(lg,out/name)
     specs=[("01-sql-editor.png","SQL editor and quick templates","editor"),("02-mysql-connection.png","Connect through the desktop companion","connection"),("03-secure-pairing.png","Pair with a trusted Windows desktop","pairing"),("04-query-results.png","Review results and export CSV","results")]
@@ -189,6 +183,6 @@ def main():
     with zipfile.ZipFile(zip_path,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
         for x in sorted(out.rglob("*")):
             if x.is_file(): z.write(x,x.relative_to(out.parent))
-    print("Generated 512px logo, store icon, feature graphic, 4 phone screenshots, 12 landscape previews and ZIP.")
+    print("Generated a resized 512px logo, same-logo 1024x500 feature graphic, store icon, screenshot previews and ZIP.")
 
 if __name__=="__main__": main()

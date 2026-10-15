@@ -17,6 +17,7 @@ on:
       - "tools/generate_play_store_assets.py"
       - "tools/generate_brand_assets.py"
       - "assets/mysqlidle-logo-reference.webp"
+      - "assets/mysqlidle-logo.png"
   pull_request:
     paths:
       - "bootstrap/trigger-build.txt"
@@ -31,6 +32,7 @@ on:
       - "tools/generate_play_store_assets.py"
       - "tools/generate_brand_assets.py"
       - "assets/mysqlidle-logo-reference.webp"
+      - "assets/mysqlidle-logo.png"
   workflow_dispatch:
 
 permissions:

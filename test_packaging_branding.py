@@ -99,16 +99,17 @@ class PackagingBrandingTests(unittest.TestCase):
         android_logo = ROOT / "android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
         self.assertIn('HIRES_LOGO_SOURCE = ASSETS / "mysqlidle-logo-highres.png"', generator)
         play_generator = (ROOT / "tools" / "generate_play_store_assets.py").read_text(encoding="utf-8")
-        reference = ROOT / "assets" / "mysqlidle-logo-reference.webp"
-        self.assertIn('root/"assets"/"mysqlidle-logo-reference.webp"', play_generator)
+        reference = ROOT / "assets" / "mysqlidle-logo.png"
+        self.assertIn('root/"assets"/"mysqlidle-logo.png"', play_generator)
         self.assertTrue(logo.is_file())
         self.assertTrue(reference.is_file())
         self.assertTrue(hires_logo.is_file())
         self.assertTrue(android_logo.is_file())
         self.assertEqual(hires_logo.read_bytes(), android_logo.read_bytes())
         with Image.open(reference) as image:
-            self.assertEqual(image.size, (384, 367))
-            self.assertEqual(image.format, "WEBP")
+            self.assertEqual(image.size, (96, 96))
+            self.assertEqual(image.format, "PNG")
+            self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
         with Image.open(hires_logo) as image:
             self.assertEqual(image.size, (512, 512))
             self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
