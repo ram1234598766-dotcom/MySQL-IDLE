@@ -119,7 +119,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn("winget install 9NQ7512CXL7T", workflow)
         self.assertIn('exec -3.15 -c "import sys; print(sys.executable)"', workflow)
         self.assertIn("MYSQLIDLE_PYTHON=$pythonExecutable", workflow)
-        self.assertIn("& $env:MYSQLIDLE_PYTHON -m unittest -v", workflow)
+        self.assertIn("$testOutput = & $env:MYSQLIDLE_PYTHON -m unittest -v", workflow)
         self.assertNotIn("MYSQLIDLE_PYMANAGER exec -3.15 .\\run_ci_tests.py", workflow)
         self.assertIn("bash tools/setup_python_3_15_linux.sh", workflow)
         linux_setup = (ROOT / "tools/setup_python_3_15_linux.sh").read_text(encoding="utf-8")
