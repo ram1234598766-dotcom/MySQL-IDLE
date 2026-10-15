@@ -60,6 +60,22 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn("password_valid = verify_password(master_password, owner.password_record)", companion)
         self.assertIn("Invalid master password or pairing code.", companion)
 
+    def test_android_release_uses_minimum_permissions_and_publishes_signed_bundle(self):
+        manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+        permissions = __import__("re").findall(
+            r'<uses-permission[^>]+android:name="([^"]+)"', manifest
+        )
+        self.assertEqual(permissions, ["android.permission.INTERNET"])
+
+        gradle = (ROOT / "android-app/app/build.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn("targetSdk = 35", gradle)
+
+        workflow = (ROOT / ".github/workflows/build-exe-apk.yml").read_text(encoding="utf-8")
+        self.assertIn("assembleRelease bundleRelease", workflow)
+        self.assertIn('jarsigner -verify "$bundle"', workflow)
+        self.assertIn("MySQLIDLE-Mobile-release.aab", workflow)
+        self.assertIn("release-assets/MySQLIDLE-Mobile-release.aab", workflow)
+
     def test_installer_creates_desktop_shortcut_with_explicit_shared_icon(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         self.assertIn("WizardStyle=modern dynamic polar includetitlebar", source)
