@@ -535,10 +535,18 @@ jobs:
               -pass env:ANDROID_KEYSTORE_PASSWORD
             echo "Encrypted replacement-key backup staged for the CI artifact only."
           fi
-      - name: Build debug APK when release signing is not configured
+      - name: Build debug APK and App Bundle when release signing is not configured
         if: env.ANDROID_SIGNING_ENABLED != 'true'
         working-directory: android-app
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon assembleDebug bundleDebug
+      - name: Verify debug App Bundle packaging
+        if: env.ANDROID_SIGNING_ENABLED != 'true'
+        run: |
+          set -euo pipefail
+          bundle="android-app/app/build/outputs/bundle/debug/app-debug.aab"
+          test -s "$bundle"
+          jarsigner -verify "$bundle"
+          echo "Debug App Bundle was built and its signature verified for packaging coverage." >> "$GITHUB_STEP_SUMMARY"
       - name: Stage debug APK for CI only
         if: env.ANDROID_SIGNING_ENABLED != 'true'
         run: |
