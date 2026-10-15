@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.webkit.SslErrorHandler
@@ -66,6 +67,47 @@ class MainActivity : Activity() {
             setOnClickListener { onClick() }
         }
 
+    /**
+     * Android 16 enforces edge-to-edge layouts for apps targeting API 36.
+     * Keep interactive content inside the system-bar and display-cutout safe area.
+     */
+    @Suppress("DEPRECATION")
+    private fun applySystemBarInsets(view: View) {
+        val initialLeft = view.paddingLeft
+        val initialTop = view.paddingTop
+        val initialRight = view.paddingRight
+        val initialBottom = view.paddingBottom
+
+        view.setOnApplyWindowInsetsListener { target, insets ->
+            val left: Int
+            val top: Int
+            val right: Int
+            val bottom: Int
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val safeInsets = insets.getInsets(
+                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+                )
+                left = safeInsets.left
+                top = safeInsets.top
+                right = safeInsets.right
+                bottom = safeInsets.bottom
+            } else {
+                left = insets.systemWindowInsetLeft
+                top = insets.systemWindowInsetTop
+                right = insets.systemWindowInsetRight
+                bottom = insets.systemWindowInsetBottom
+            }
+            target.setPadding(
+                initialLeft + left,
+                initialTop + top,
+                initialRight + right,
+                initialBottom + bottom
+            )
+            insets
+        }
+        view.requestApplyInsets()
+    }
+
     private fun showConnectScreen(error: String? = null) {
         web?.stopLoading()
         web?.let { (it.parent as? ViewGroup)?.removeView(it); it.destroy() }
@@ -73,6 +115,7 @@ class MainActivity : Activity() {
         baseUri = null
 
         val scroll = ScrollView(this)
+        applySystemBarInsets(scroll)
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(28), dp(24), dp(28))
@@ -258,6 +301,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(paper)
         }
+        applySystemBarInsets(page)
         root = page
 
         val browser = WebView(this)
