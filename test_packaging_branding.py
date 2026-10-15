@@ -112,7 +112,7 @@ class PackagingBrandingTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/build-exe-apk.yml").read_text(encoding="utf-8")
         self.assertIn("compileSdk = 36", app_build)
         self.assertIn("targetSdk = 36", app_build)
-        self.assertIn('version "9.4.0"', root_build)
+        self.assertRegex(root_build, r'id\("com\.android\.application"\) version "\d+\.\d+\.\d+" apply false')
         self.assertIn("gradle-version: \"9.8.1\"", workflow)
         self.assertIn('build-tools;36.0.0', workflow)
         self.assertIn("APK must target Android API level 36 or higher.", workflow)
