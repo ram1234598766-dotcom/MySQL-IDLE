@@ -68,9 +68,17 @@ jobs:
       WINDOWS_SIGNING_ENABLED: ${{ github.event_name != 'pull_request' && secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-python@v7.0.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.14.8"
+          version: "0.12.3"
+          enable-cache: true
+      - name: Install Python 3.15.0
+        shell: pwsh
+        run: |
+          uv python install 3.15.0
+          uv venv --seed --python 3.15.0 .venv
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\.venv\Scripts"
+          & ".\.venv\Scripts\python.exe" --version
       - name: Restore source payload when bootstrapping an empty repo
         run: python tools/restore_sources.py
       - name: Install build dependencies
@@ -302,9 +310,17 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - name: Restore source payload when bootstrapping an empty repo
         run: python tools/restore_sources.py
-      - uses: actions/setup-python@v7.0.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.14.8"
+          version: "0.12.3"
+          enable-cache: true
+      - name: Install Python 3.15.0
+        shell: bash
+        run: |
+          uv python install 3.15.0
+          uv venv --seed --python 3.15.0 .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/python --version
       - name: Install Python runtime dependencies for the mobile companion
         run: python -m pip install -r requirements.txt
       - name: Run mobile HTTPS integration tests
