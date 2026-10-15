@@ -153,37 +153,85 @@ def wide(path,title,mode):
     im.save(path,format="PNG",optimize=True)
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1]); args=p.parse_args()
-    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo.png"
-    if not src.is_file(): raise SystemExit("Required source logo not found: "+str(src))
-    out=root/"dist"/"google-play-assets"; out.mkdir(parents=True,exist_ok=True); lg=logo(src)
-    # Google Play store icon is opaque and square; round corners are applied by the store.
-    icon=Image.new("RGBA",(512,512),BG+(255,)); icon.alpha_composite(lg.resize((448,448),Image.Resampling.LANCZOS),(32,32)); icon.convert("RGB").save(out/"app-icon-512.png",optimize=True)
-    (root/"assets"/"mysqlidle-logo-highres.png").parent.mkdir(exist_ok=True); lg.save(root/"assets"/"mysqlidle-logo-highres.png",format="PNG",optimize=True)
+    p=argparse.ArgumentParser()
+    p.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1])
+    args=p.parse_args()
+    root=args.root.resolve()
+    source=root/"assets"/"mysqlidle-logo-source.webp"
+    if not source.is_file():
+        raise SystemExit("Required uploaded MySQL IDLE logo source not found: "+str(source))
+    # The source is the user's supplied icon cropped and sized to 512x512.
+    # Keep its proportions and transparency; do not redraw or add text.
+    lg=logo(source, 512)
+    if lg.size != (512,512):
+        raise SystemExit("Shared app logo must be 512x512 pixels.")
+    assets=root/"assets"
+    assets.mkdir(parents=True,exist_ok=True)
+    canonical=assets/"mysqlidle-logo.png"
+    canonical.save(canonical,format="PNG",optimize=True)
+    (assets/"mysqlidle-logo-highres.png").write_bytes(canonical.read_bytes())
+
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
-    if not android.parent.is_dir(): raise SystemExit("Android icon resource folder missing: "+str(android.parent))
-    lg.save(android,format="PNG",optimize=True)
-    fg=bg((1024,500)); d=ImageDraw.Draw(fg)
-    for i in range(5): d.arc((590,i*84,1110,i*84+190),190,320,fill=(30,61,94),width=3)
-    mark=lg.resize((210,210),Image.Resampling.LANCZOS); fg.paste(mark,(64,125),mark); d=ImageDraw.Draw(fg)
-    text(d,(315,114),"MySQL IDLE",62,WHITE,True); text(d,(318,194),"SQL workspace",44,CYAN,True); text(d,(318,257),"for MySQL & MariaDB",31,TEXT)
-    d.line((318,326,890,326),fill=(52,76,108),width=2); box(d,(318,352,620,409),(17,43,62),(41,78,108),22,2); text(d,(469,381),"WINDOWS DESKTOP",19,TEXT,True,"mm")
-    box(d,(639,352,886,409),(17,43,62),(41,78,108),22,2); text(d,(762,381),"ANDROID COMPANION",16,TEXT,True,"mm"); text(d,(318,439),"Pair securely over a trusted private network",20,MUTED)
-    fg.save(out/"feature-graphic-1024x500.png",optimize=True)
-    for name,fn in [("phone-01-connect-and-verify-1080x1920.png",phone_connect),("phone-02-unlock-and-pair-1080x1920.png",phone_pair),("phone-03-mysql-connection-1080x1920.png",phone_connection),("phone-04-sql-editor-and-results-1080x1920.png",phone_query)]: fn(lg,out/name)
-    specs=[("01-sql-editor.png","SQL editor and quick templates","editor"),("02-mysql-connection.png","Connect through the desktop companion","connection"),("03-secure-pairing.png","Pair with a trusted Windows desktop","pairing"),("04-query-results.png","Review results and export CSV","results")]
+    if not android.parent.is_dir():
+        raise SystemExit("Android icon resource folder missing: "+str(android.parent))
+    android.write_bytes(canonical.read_bytes())
+
+    out=root/"dist"/"google-play-assets"
+    out.mkdir(parents=True,exist_ok=True)
+    # Store icon is the exact 512px icon; preserve alpha and rounded badge silhouette.
+    lg.save(out/"app-icon-512.png",format="PNG",optimize=True)
+
+    # Landscape feature graphic: same icon, centered without distortion or added wording.
+    fg=Image.new("RGB",(1024,500),(244,250,251))
+    fgd=ImageDraw.Draw(fg)
+    top=(244,250,251); bottom=(235,246,249)
+    for y in range(500):
+        t=y/499
+        color=tuple(round(top[i]*(1-t)+bottom[i]*t) for i in range(3))
+        fgd.line((0,y,1023,y),fill=color)
+    mark=lg.resize((450,450),Image.Resampling.LANCZOS)
+    fg_rgba=fg.convert("RGBA")
+    fg_rgba.alpha_composite(mark,((1024-450)//2,(500-450)//2))
+    fg_rgba.convert("RGB").save(out/"feature-graphic-1024x500.png",format="PNG",optimize=True)
+
+    for name,fn in [
+        ("phone-01-connect-and-verify-1080x1920.png",phone_connect),
+        ("phone-02-unlock-and-pair-1080x1920.png",phone_pair),
+        ("phone-03-mysql-connection-1080x1920.png",phone_connection),
+        ("phone-04-sql-editor-and-results-1080x1920.png",phone_query),
+    ]:
+        fn(lg,out/name)
+    specs=[
+        ("01-sql-editor.png","SQL editor and quick templates","editor"),
+        ("02-mysql-connection.png","Connect through the desktop companion","connection"),
+        ("03-secure-pairing.png","Pair with a trusted Windows desktop","pairing"),
+        ("04-query-results.png","Review results and export CSV","results"),
+    ]
     for folder in ("tablet-7-inch","tablet-10-inch","desktop"):
-        dest=out/folder; dest.mkdir(exist_ok=True)
-        for name,title,mode in specs: wide(dest/name,title,mode)
+        dest=out/folder
+        dest.mkdir(exist_ok=True)
+        for name,title,mode in specs:
+            wide(dest/name,title,mode)
     files=[]
     for x in sorted(out.rglob("*.png")):
-        with Image.open(x) as im: files.append({"file":x.relative_to(out).as_posix(),"width":im.width,"height":im.height,"bytes":x.stat().st_size})
-    manifest={"product":"MySQL IDLE Mobile","notes":["512x512 opaque PNG app icon; rounded corners are not baked in.","1024x500 feature graphic.","Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered previews based on the current UI; verify against the final build on a real device before submission.","XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists."],"assets":files}
+        with Image.open(x) as im:
+            files.append({"file":x.relative_to(out).as_posix(),"width":im.width,"height":im.height,"bytes":x.stat().st_size})
+    manifest={
+        "product":"MySQL IDLE Mobile",
+        "notes":[
+            "App icon: the supplied MySQL IDLE icon, 512x512 PNG, kept at its original proportions.",
+            "Feature graphic: 1024x500 PNG with the same icon centered on a matching pale background, without additional text.",
+            "Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered UI previews; verify against the final build on real devices before submission.",
+            "XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists.",
+        ],
+        "assets":files,
+    }
     (out/"ASSET-MANIFEST.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
     zip_path=root/"dist"/"MySQLIDLE-Play-Store-Assets.zip"
     with zipfile.ZipFile(zip_path,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
         for x in sorted(out.rglob("*")):
-            if x.is_file(): z.write(x,x.relative_to(out.parent))
-    print("Generated 512px logo, store icon, feature graphic, 4 phone screenshots, 12 landscape previews and ZIP.")
+            if x.is_file():
+                z.write(x,x.relative_to(out.parent))
+    print("Generated shared 512px logo, 1024x500 feature graphic, phone screenshots and tablet/desktop previews.")
 
 if __name__=="__main__": main()
