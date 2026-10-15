@@ -217,6 +217,25 @@ class MainActivity : Activity() {
         ).apply { setPadding(0, dp(8), 0, dp(18)) })
         page.addView(label("Tip: allow the desktop application through your private-network firewall.",
             13f, muted))
+
+        page.addView(label("Privacy Policy", 13f, blue).apply {
+            setPadding(0, dp(14), 0, dp(2))
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+            isClickable = true
+            setOnClickListener {
+                runCatching {
+                    startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            Uri.parse("https://github.com/ram1234598766-dotcom/MySQL-IDLE/blob/main/PRIVACY_POLICY.md")
+                        )
+                    )
+                }.onFailure {
+                    Toast.makeText(this@MainActivity, "Could not open the privacy policy.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
     }
 
     private fun connect(raw: String, rawFingerprint: String) {
