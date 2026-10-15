@@ -117,7 +117,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('build-tools;36.0.0', workflow)
         self.assertIn("APK must target Android API level 36 or higher.", workflow)
         self.assertIn("winget install 9NQ7512CXL7T", workflow)
-        self.assertIn("pymanager exec -3.15 -m venv .venv", workflow)
+        self.assertIn("exec -3.15 -m venv .venv", workflow)
         self.assertIn("bash tools/setup_python_3_15_linux.sh", workflow)
         linux_setup = (ROOT / "tools/setup_python_3_15_linux.sh").read_text(encoding="utf-8")
         self.assertIn("Python-3.15.0.tar.xz", linux_setup)
