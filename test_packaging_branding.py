@@ -52,9 +52,9 @@ class PackagingBrandingTests(unittest.TestCase):
     def test_installer_creates_desktop_shortcut_with_explicit_shared_icon(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         self.assertIn("WizardStyle=modern dynamic polar includetitlebar", source)
-        self.assertIn('UninstallDisplayIcon={app}\\\\_internal\\\\assets\\\\mysqlidle.ico', source)
+        self.assertIn('UninstallDisplayIcon={app}\\_internal\\assets\\mysqlidle.ico', source)
         self.assertIn('Name: "{autodesktop}\\\\MySQL IDLE"', source)
-        self.assertIn('IconFilename: "{app}\\\\_internal\\\\assets\\\\mysqlidle.ico"; IconIndex: 0', source)
+        self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
         self.assertNotIn("Tasks: desktopicon", source)
 
     def test_user_supplied_logo_is_the_shared_windows_and_android_source(self):
@@ -67,7 +67,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertEqual(logo.read_bytes(), android_logo.read_bytes())
         with Image.open(logo) as image:
             self.assertEqual(image.size, (256, 256))
-            self.assertIn("A", image.getbands())
+            self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
 
     def test_android_launcher_and_splash_use_the_supplied_logo(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
