@@ -46,7 +46,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Restore source files
-        run: '& $env:MYSQLIDLE_PYTHON tools/restore_sources.py'
+        run: python tools/restore_sources.py
       - name: Commit restored sources
         shell: bash
         run: |
@@ -86,18 +86,20 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $pythonExecutable)) {
             throw "Could not resolve the actual CPython 3.15 interpreter path."
           }
-          Add-Content -Path $env:GITHUB_ENV -Value "MYSQLIDLE_PYTHON=$pythonExecutable"
+          Add-Content -Path $env:GITHUB_ENV -Value "MYSQLIDLE_PYMANAGER=$managerCommand"
           Write-Host "Using real CPython executable: $pythonExecutable"
-          & $pythonExecutable --version
+          & $managerCommand exec -3.15 --version
           if ($LASTEXITCODE -ne 0) { throw "The Python 3.15 interpreter did not launch correctly." }
       - name: Restore source payload when bootstrapping an empty repo
-        run: python tools/restore_sources.py
+        run: '& $env:MYSQLIDLE_PYMANAGER exec -3.15 tools/restore_sources.py'
       - name: Install build dependencies
         run: |
-          & $env:MYSQLIDLE_PYTHON -m pip install --upgrade pip
-          & $env:MYSQLIDLE_PYTHON -m pip install -r requirements.txt pyinstaller==6.22.3 pillow==12.3.0
+          & $env:MYSQLIDLE_PYMANAGER exec -3.15 -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
+          & $env:MYSQLIDLE_PYMANAGER exec -3.15 -m pip install -r requirements.txt pyinstaller==6.22.3 pillow==12.3.0
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build dependencies installation failed.' }
       - name: Generate branded Windows assets
-        run: '& $env:MYSQLIDLE_PYTHON tools/generate_brand_assets.py'
+        run: '& $env:MYSQLIDLE_PYMANAGER exec -3.15 tools/generate_brand_assets.py'
       - name: Run regression tests
         shell: pwsh
         run: |
@@ -114,13 +116,14 @@ jobs:
           print('TEST_RESULT=' + status)
           with open('ci-test-status.txt', 'w', encoding='ascii') as out:
               out.write(status)
+          sys.exit(0 if result.wasSuccessful() else 1)
           '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
 
           # Actions runs pwsh with ErrorActionPreference=Stop. Keep native stderr/exit
           # signaling non-terminating until the explicit unittest status is checked.
           $ErrorActionPreference = 'Continue'
           $PSNativeCommandUseErrorActionPreference = $false
-          & $env:MYSQLIDLE_PYTHON .\run_ci_tests.py
+          & $env:MYSQLIDLE_PYMANAGER exec -3.15 .\run_ci_tests.py
           $testExitCode = $LASTEXITCODE
           Write-Host "Python regression runner exit code: $testExitCode"
           if (!(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
@@ -140,11 +143,11 @@ jobs:
             throw 'Desktop regression tests did not pass.'
           }
       - name: Compile Python modules
-        run: '& $env:MYSQLIDLE_PYTHON -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
+        run: '& $env:MYSQLIDLE_PYMANAGER exec -3.15 -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
       - name: Build one-folder desktop app
-        run: '& $env:MYSQLIDLE_PYTHON -m PyInstaller --clean --noconfirm mysql_idle.spec'
+        run: '& $env:MYSQLIDLE_PYMANAGER exec -3.15 -m PyInstaller --clean --noconfirm mysql_idle.spec'
       - name: Build portable single-file EXE
-        run: '& $env:MYSQLIDLE_PYTHON -m PyInstaller --clean --noconfirm mysql_idle_portable.spec'
+        run: '& $env:MYSQLIDLE_PYMANAGER exec -3.15 -m PyInstaller --clean --noconfirm mysql_idle_portable.spec'
       - name: Smoke-test packaged Windows executables
         shell: pwsh
         run: |
