@@ -505,22 +505,29 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "replaced=true" >> "$GITHUB_OUTPUT"
           echo "New Android release signing key generated and validated."
-      - name: Build release-signed Android APK
+      - name: Build release-signed APK and Google Play App Bundle
         if: env.ANDROID_SIGNING_ENABLED == 'true'
         working-directory: android-app
         env:
           ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/mysqlidle-release.jks
-        run: gradle --no-daemon assembleRelease
-      - name: Verify and stage release-signed APK
+        run: gradle --no-daemon assembleRelease bundleRelease
+      - name: Verify and stage signed Android release artifacts
         if: env.ANDROID_SIGNING_ENABLED == 'true'
         run: |
           set -euo pipefail
           apk="android-app/app/build/outputs/apk/release/app-release.apk"
+          bundle="android-app/app/build/outputs/bundle/release/app-release.aab"
           test -s "$apk"
+          test -s "$bundle"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+          jarsigner -verify "$bundle"
+          unzip -Z1 "$bundle" | grep -Eq '^META-INF/[^/]+\.RSA$|^META-INF/[^/]+\.DSA$|^META-INF/[^/]+\.EC$'
+          unzip -Z1 "$bundle" | grep -Eq '^META-INF/[^/]+\.SF$'
           mkdir -p dist
           cp "$apk" dist/MySQLIDLE-Mobile-release.apk
+          cp "$bundle" dist/MySQLIDLE-Mobile-release.aab
           echo "APK_SMOKE_PATH=dist/MySQLIDLE-Mobile-release.apk" >> "$GITHUB_ENV"
+          echo "Signed APK and Google Play App Bundle verified and staged." >> "$GITHUB_STEP_SUMMARY"
           if [[ "${ANDROID_KEYSTORE_WAS_REPLACED:-false}" == "true" ]]; then
             openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 -md sha256 \
               -in "$RUNNER_TEMP/mysqlidle-release.jks" \
@@ -635,7 +642,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: MySQLIDLE-Android
-          path: dist/MySQLIDLE-Mobile-*.apk
+          path: |
+            dist/MySQLIDLE-Mobile-*.apk
+            dist/MySQLIDLE-Mobile-*.aab
           if-no-files-found: error
           retention-days: 90
       - name: Upload encrypted Android signing-key backup
@@ -748,6 +757,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s "release-assets/MySQLIDLE-Mobile-release.apk"
+          test -s "release-assets/MySQLIDLE-Mobile-release.aab"
           cd release-assets
           if [[ "$WINDOWS_BUILD_READY" == "true" ]]; then
             test -s "MySQLIDLE_Portable.exe"
@@ -755,7 +765,7 @@ jobs:
             test -s "MySQLIDLE-Setup.exe"
             test -s "WINDOWS-SIGNING-STATUS.txt"
           fi
-          assets=(MySQLIDLE-Mobile-release.apk MySQLIDLE_Portable.exe MySQLIDLE-Folder.zip MySQLIDLE-Setup.exe WINDOWS-SIGNING-STATUS.txt)
+          assets=(MySQLIDLE-Mobile-release.apk MySQLIDLE-Mobile-release.aab MySQLIDLE_Portable.exe MySQLIDLE-Folder.zip MySQLIDLE-Setup.exe WINDOWS-SIGNING-STATUS.txt)
           included=()
           for asset in "${assets[@]}"; do
             [[ -s "$asset" ]] && included+=("$asset")
@@ -773,6 +783,7 @@ jobs:
           generate_release_notes: true
           files: |
             release-assets/MySQLIDLE-Mobile-release.apk
+            release-assets/MySQLIDLE-Mobile-release.aab
             release-assets/SHA256SUMS
       - name: Publish Android and Windows release assets
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
@@ -785,6 +796,7 @@ jobs:
           generate_release_notes: true
           files: |
             release-assets/MySQLIDLE-Mobile-release.apk
+            release-assets/MySQLIDLE-Mobile-release.aab
             release-assets/MySQLIDLE_Portable.exe
             release-assets/MySQLIDLE-Folder.zip
             release-assets/MySQLIDLE-Setup.exe
