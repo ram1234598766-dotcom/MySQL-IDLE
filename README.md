@@ -4,7 +4,7 @@
 
 MySQL IDLE provides a lightweight, IDLE-style desktop shell for writing and running SQL, inspecting query results, running `.sql` scripts, and exporting result sets. Its optional mobile companion lets a paired Android device use a responsive SQL workspace through an HTTPS service hosted by the Windows desktop.
 
-![MySQL IDLE logo](assets/mysqlidle-logo.png)
+![MySQL IDLE logo](assets/mysqlidle-logo-reference.webp)
 
 [![Build Windows EXE and Android APK](https://github.com/ram1234598766-dotcom/MySQL-IDLE/actions/workflows/build-exe-apk.yml/badge.svg?branch=main)](https://github.com/ram1234598766-dotcom/MySQL-IDLE/actions/workflows/build-exe-apk.yml)
 [![Security checks](https://github.com/ram1234598766-dotcom/MySQL-IDLE/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/ram1234598766-dotcom/MySQL-IDLE/actions/workflows/security.yml)
