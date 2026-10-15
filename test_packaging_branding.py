@@ -18,6 +18,30 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
         self.assertTrue((ROOT / "assets" / "mysqlidle-logo.png").is_file())
 
+    def test_google_play_assets_have_required_sizes(self):
+        out = ROOT / "dist" / "google-play-assets"
+        expected = {
+            "app-icon-512.png": (512, 512),
+            "feature-graphic-1024x500.png": (1024, 500),
+            "phone-01-connect-and-verify-1080x1920.png": (1080, 1920),
+            "phone-02-unlock-and-pair-1080x1920.png": (1080, 1920),
+            "phone-03-mysql-connection-1080x1920.png": (1080, 1920),
+            "phone-04-sql-editor-and-results-1080x1920.png": (1080, 1920),
+        }
+        for name, size in expected.items():
+            path = out / name
+            with self.subTest(name=name):
+                self.assertTrue(path.is_file(), f"Missing generated asset: {path}")
+                with Image.open(path) as image:
+                    self.assertEqual(image.size, size)
+                self.assertLessEqual(path.stat().st_size, 8 * 1024 * 1024)
+        for folder in ("tablet-7-inch", "tablet-10-inch", "desktop"):
+            files = list((out / folder).glob("*.png"))
+            self.assertEqual(len(files), 4)
+            for path in files:
+                with Image.open(path) as image:
+                    self.assertEqual(image.size, (1920, 1080))
+
     def test_windows_mysql_connection_defaults_to_certificate_optional_tls(self):
         source = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
         self.assertIn("DEFAULT_MYSQL_TLS_VERIFY = False", source)
@@ -71,14 +95,19 @@ class PackagingBrandingTests(unittest.TestCase):
     def test_user_supplied_logo_is_the_shared_windows_and_android_source(self):
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
         logo = ROOT / "assets" / "mysqlidle-logo.png"
+        hires_logo = ROOT / "assets" / "mysqlidle-logo-highres.png"
         android_logo = ROOT / "android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
         self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
+        self.assertIn('HIRES_LOGO_SOURCE = ASSETS / "mysqlidle-logo-highres.png"', generator)
         self.assertTrue(logo.is_file())
+        self.assertTrue(hires_logo.is_file())
         self.assertTrue(android_logo.is_file())
-        self.assertEqual(logo.read_bytes(), android_logo.read_bytes())
+        self.assertEqual(hires_logo.read_bytes(), android_logo.read_bytes())
         with Image.open(logo) as image:
             self.assertEqual(image.size, (96, 96))
             self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
+        with Image.open(android_logo) as image:
+            self.assertEqual(image.size, (512, 512))
 
     def test_android_launcher_and_splash_use_the_supplied_logo(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
