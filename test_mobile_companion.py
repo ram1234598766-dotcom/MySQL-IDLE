@@ -25,6 +25,7 @@ if "pymysql" not in sys.modules:
         sys.modules["pymysql"] = pymysql_stub
 
 import mobile_companion
+import password_auth
 
 
 class FakeCursor:
@@ -86,7 +87,11 @@ class FakeConnection:
 
 class MobileCompanionHTTPTests(unittest.TestCase):
     def setUp(self):
-        self.server = mobile_companion.MobileCompanionServer(port=0, bind_host="127.0.0.1")
+        self.master_password = "MySQL IDLE test master password 42!"
+        self.password_record = password_auth.create_password_record(self.master_password)
+        self.server = mobile_companion.MobileCompanionServer(
+            port=0, bind_host="127.0.0.1", password_record=self.password_record
+        )
         self.server.start()
         self.base = f"https://127.0.0.1:{self.server.port}"
         # This is test-only: the companion uses a temporary self-signed cert.
@@ -105,7 +110,10 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             return response.status, json.loads(response.read().decode("utf-8"))
 
     def pair(self):
-        status, result = self.request_json("/api/pair", {"code": self.server.pairing_code})
+        status, result = self.request_json("/api/pair", {
+            "code": self.server.pairing_code,
+            "masterPassword": self.master_password,
+        })
         self.assertEqual(status, 200)
         return result["token"]
 
@@ -126,6 +134,9 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertIn("Android companion", body)
             self.assertIn("viewport", body)
             self.assertIn('aria-label="MySQL IDLE logo"', body)
+            self.assertIn('id="masterPassword"', body)
+            self.assertIn('id="masterPasswordToggle"', body)
+            self.assertIn("master password you set on Windows", body)
             self.assertIn('id="historyBackBtn"', body)
             self.assertIn('id="historyForwardBtn"', body)
             self.assertIn('id="templateSelect"', body)
@@ -139,10 +150,25 @@ class MobileCompanionHTTPTests(unittest.TestCase):
             self.assertIn("50 queries in memory", body)
             self.assertIn("Run SQL", body)
 
-    def test_pairing_code_authenticates_ephemeral_session(self):
+    def test_companion_refuses_to_start_without_master_password_verifier(self):
+        with self.assertRaisesRegex(ValueError, "Set a master password"):
+            mobile_companion.MobileCompanionServer(port=0, bind_host="127.0.0.1")
+
+    def test_pairing_requires_both_master_password_and_pairing_code(self):
         with self.assertRaises(HTTPError) as err:
-            self.request_json("/api/pair", {"code": "wrong-code"})
+            self.request_json("/api/pair", {
+                "code": self.server.pairing_code,
+                "masterPassword": "not the Windows password",
+            })
         self.assertEqual(err.exception.code, 401)
+
+        with self.assertRaises(HTTPError) as err:
+            self.request_json("/api/pair", {
+                "code": "wrong-code",
+                "masterPassword": self.master_password,
+            })
+        self.assertEqual(err.exception.code, 401)
+
         token = self.pair()
         status, state = self.request_json("/api/state", token=token, method="GET")
         self.assertEqual(status, 200)
