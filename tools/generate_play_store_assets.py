@@ -168,7 +168,7 @@ def main():
     assets=root/"assets"
     assets.mkdir(parents=True,exist_ok=True)
     canonical=assets/"mysqlidle-logo.png"
-    canonical.save(canonical,format="PNG",optimize=True)
+    lg.save(canonical,format="PNG",optimize=True)
     (assets/"mysqlidle-logo-highres.png").write_bytes(canonical.read_bytes())
 
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
