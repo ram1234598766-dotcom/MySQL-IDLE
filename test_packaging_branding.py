@@ -105,5 +105,22 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn("@drawable/ic_launcher_foreground", styles)
 
 
+    def test_android_api_36_configuration_and_edge_to_edge_insets(self):
+        app_build = (ROOT / "android-app/app/build.gradle.kts").read_text(encoding="utf-8")
+        root_build = (ROOT / "android-app/build.gradle.kts").read_text(encoding="utf-8")
+        activity = (ROOT / "android-app/app/src/main/java/com/mysqlidle/mobile/MainActivity.kt").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build-exe-apk.yml").read_text(encoding="utf-8")
+        self.assertIn("compileSdk = 36", app_build)
+        self.assertIn("targetSdk = 36", app_build)
+        self.assertIn('version "9.4.0"', root_build)
+        self.assertIn("gradle-version: \"9.8.1\"", workflow)
+        self.assertIn('build-tools;36.0.0', workflow)
+        self.assertIn("APK must target Android API level 36 or higher.", workflow)
+        self.assertIn("WindowInsets.Type.systemBars()", activity)
+        self.assertIn("applySystemBarInsets(scroll)", activity)
+        self.assertIn("applySystemBarInsets(page)", activity)
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
