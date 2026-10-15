@@ -103,28 +103,27 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
         self.assertNotIn("Tasks: desktopicon", source)
 
-    def test_user_supplied_logo_is_the_shared_windows_and_android_source(self):
+    def test_user_supplied_96px_logo_is_embedded_without_upscaling_in_android(self):
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
         logo = ROOT / "assets" / "mysqlidle-logo.png"
-        hires_logo = ROOT / "assets" / "mysqlidle-logo-highres.png"
         android_logo = ROOT / "android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
-        self.assertIn('HIRES_LOGO_SOURCE = ASSETS / "mysqlidle-logo-highres.png"', generator)
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
+        self.assertIn("original supplied 96x96 logo", generator)
         play_generator = (ROOT / "tools" / "generate_play_store_assets.py").read_text(encoding="utf-8")
-        reference = ROOT / "assets" / "mysqlidle-logo.png"
         self.assertIn('root/"assets"/"mysqlidle-logo.png"', play_generator)
+        self.assertIn("shutil.copyfile(src, android)", play_generator)
+        self.assertNotIn("mysqlidle-logo-highres.png", generator)
+        self.assertNotIn("mysqlidle-logo-highres.png", play_generator)
         self.assertTrue(logo.is_file())
-        self.assertTrue(reference.is_file())
-        self.assertTrue(hires_logo.is_file())
         self.assertTrue(android_logo.is_file())
-        self.assertEqual(hires_logo.read_bytes(), android_logo.read_bytes())
-        with Image.open(reference) as image:
+        self.assertEqual(logo.read_bytes(), android_logo.read_bytes(),
+                         "Android drawable must be byte-for-byte identical to the original 96x96 PNG.")
+        with Image.open(logo) as image:
             self.assertEqual(image.size, (96, 96))
             self.assertEqual(image.format, "PNG")
             self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
-        with Image.open(hires_logo) as image:
-            self.assertEqual(image.size, (512, 512))
-            self.assertEqual(image.convert("RGBA").getpixel((0, 0))[3], 0)
-
+        with Image.open(android_logo) as image:
+            self.assertEqual(image.size, (96, 96))
     def test_android_launcher_and_splash_use_the_supplied_logo(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
         self.assertIn('android:icon="@mipmap/ic_launcher"', manifest)

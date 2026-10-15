@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate Play Store graphics plus a shared 512px logo for Android and Windows builds."""
 from __future__ import annotations
-import argparse, json, zipfile
+import argparse, json, shutil, zipfile
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -161,10 +161,13 @@ def main():
     out=root/"dist"/"google-play-assets"; out.mkdir(parents=True,exist_ok=True); lg=logo(src)
     # Exact uploaded image resized only; preserve its original transparent corner pixels.
     lg.save(out/"app-icon-512.png",format="PNG",optimize=True)
-    (root/"assets"/"mysqlidle-logo-highres.png").parent.mkdir(exist_ok=True); lg.save(root/"assets"/"mysqlidle-logo-highres.png",format="PNG",optimize=True)
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
     if not android.parent.is_dir(): raise SystemExit("Android icon resource folder missing: "+str(android.parent))
-    lg.save(android,format="PNG",optimize=True)
+    # Keep the original 96x96 PNG as the Android resource; do not replace it with an upscale.
+    shutil.copyfile(src, android)
+    with Image.open(android) as embedded_logo:
+        if embedded_logo.size != (96, 96):
+            raise SystemExit("Android logo resource must remain the original 96x96 image.")
     # Exact uploaded image resized directly to the requested feature-graphic dimensions.
     # No added background, text, masking, padding, or decorative elements.
     fg=logo(src,(1024,500))
