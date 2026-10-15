@@ -111,8 +111,8 @@ jobs:
           with open('ci-test-status.txt', 'w', encoding='ascii') as out:
               out.write(status)
           '@ | Set-Content -Encoding utf8 .\run_ci_tests.py
-          python .\run_ci_tests.py
-          if ((Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
+          python .\run_ci_tests.py 2>&1 | Tee-Object -FilePath .\ci-test-output.txt
+          if (!(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
             throw 'Desktop regression tests failed.'
           }
           $global:LASTEXITCODE = 0
@@ -120,9 +120,22 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          if (!(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
-            throw 'Desktop regression tests did not pass.'
+          if ((Test-Path .\ci-test-status.txt) -and (Get-Content .\ci-test-status.txt -Raw).Trim() -eq 'PASS') {
+            Write-Host 'Desktop regression tests passed.'
+            exit 0
           }
+          $testOutput = if (Test-Path .\ci-test-output.txt) { Get-Content .\ci-test-output.txt -Raw } else { '' }
+          if ($testOutput -match '(?i)KeyboardInterrupt') {
+            Write-Warning 'The test process was interrupted by the runner. Retrying the regression suite once.'
+            Remove-Item .\ci-test-status.txt -Force -ErrorAction SilentlyContinue
+            python .\run_ci_tests.py 2>&1 | Tee-Object -FilePath .\ci-test-retry-output.txt
+            if ($LASTEXITCODE -ne 0 -or !(Test-Path .\ci-test-status.txt) -or (Get-Content .\ci-test-status.txt -Raw).Trim() -ne 'PASS') {
+              throw 'Desktop regression tests failed on retry after an interruption.'
+            }
+            Write-Host 'Desktop regression retry passed.'
+            exit 0
+          }
+          throw 'Desktop regression tests did not pass; output did not indicate an interrupt that can be safely retried.'
       - name: Compile Python modules
         run: python -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py
       - name: Build one-folder desktop app
