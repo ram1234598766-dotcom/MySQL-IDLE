@@ -683,6 +683,21 @@ class ConnectDialog(tk.Toplevel):
             variable.set(selected)
 
     def on_ok(self):
+        # Validate the non-secret connection fields before creating a master-password
+        # record, so a simple port typo cannot leave the first-run form half-configured.
+        values = {k: (v.get() if k == "password" else v.get().strip()) for k, v in self.vars.items()}
+        values["tls_verify"] = bool(self.tls_verify.get())
+        values["host"] = values["host"] or "localhost"
+        try:
+            values["port"] = int(values["port"] or 3306)
+            if not 1 <= values["port"] <= 65535:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror(
+                "Invalid port", "Port must be an integer from 1 to 65535.", parent=self
+            )
+            return
+
         if self.require_master_password:
             master_password = self.master_password_var.get()
             if self.password_record is None:
@@ -736,16 +751,6 @@ class ConnectDialog(tk.Toplevel):
                 return
             self.master_authenticated = True
 
-        values = {k: (v.get() if k == "password" else v.get().strip()) for k, v in self.vars.items()}
-        values["tls_verify"] = bool(self.tls_verify.get())
-        values["host"] = values["host"] or "localhost"
-        try:
-            values["port"] = int(values["port"] or 3306)
-            if not 1 <= values["port"] <= 65535:
-                raise ValueError
-        except ValueError:
-            messagebox.showerror("Invalid port", "Port must be an integer from 1 to 65535.", parent=self)
-            return
         self.result = values
         self.destroy()
 
