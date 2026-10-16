@@ -79,14 +79,60 @@ def _resource_path(relative_path):
 
 
 def _apply_window_icon(window):
-    """Use the shared product icon in the title bar when its asset is available."""
+    """Use the generated multi-size ICO where supported, avoiding DPI-induced blur."""
     icon_path = _resource_path(Path("assets") / "mysqlidle.ico")
+    logo_path = _resource_path(Path("assets") / "mysqlidle-logo.png")
+    icon_set = False
     if icon_path.is_file():
         try:
             window.iconbitmap(default=str(icon_path))
+            icon_set = True
         except (tk.TclError, OSError):
-            # Keep startup resilient when running from source without generated assets.
+            # Some Tk builds do not support ICO title-bar images.
             pass
+    if not icon_set and logo_path.is_file():
+        try:
+            # PNG is a fallback for platforms that cannot use the Windows ICO.
+            # Keep a strong reference so Tk does not garbage-collect the icon.
+            window._mysqlidle_icon_photo = tk.PhotoImage(file=str(logo_path))
+            window.iconphoto(True, window._mysqlidle_icon_photo)
+        except (tk.TclError, OSError):
+            # Title-bar icon is optional when assets are missing from a source install.
+            pass
+
+
+def _configure_ttk_style(root):
+    """Prefer crisp native controls and consistent typography on each platform."""
+    try:
+        style = ttk.Style(root)
+        available = set(style.theme_names())
+        if os.name == "nt":
+            preferred = ("vista", "xpnative", "clam")
+        elif sys.platform == "darwin":
+            preferred = ("aqua", "clam")
+        else:
+            preferred = ("clam", "alt", "default")
+        theme = next((candidate for candidate in preferred if candidate in available), None)
+        if theme and style.theme_use() != theme:
+            style.theme_use(theme)
+
+        families = set(tkfont.families(root))
+        ui_family = "Segoe UI" if "Segoe UI" in families else "TkDefaultFont"
+        for font_name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
+            try:
+                tkfont.nametofont(font_name, root=root).configure(family=ui_family, size=10)
+            except (tk.TclError, TypeError):
+                pass
+
+        style.configure("TButton", padding=(12, 7), font=(ui_family, 10))
+        style.configure("TEntry", padding=(7, 5), font=(ui_family, 10))
+        style.configure("TCheckbutton", padding=(3, 4), font=(ui_family, 10))
+        style.configure("TCombobox", padding=(7, 5), font=(ui_family, 10))
+        style.configure("Treeview", rowheight=27, font=(ui_family, 10))
+        style.configure("Treeview.Heading", font=(ui_family, 10, "bold"))
+        return style
+    except (tk.TclError, OSError):
+        return None
 
 
 def get_app_data_dir():
@@ -493,6 +539,7 @@ class ConnectDialog(tk.Toplevel):
     def __init__(self, parent, defaults, require_master_password=False):
         super().__init__(parent, bg="white", padx=16, pady=14)
         self.title("Connect to MySQL")
+        _apply_window_icon(self)
         self.resizable(False, False)
         self.result = None
         self.require_master_password = bool(require_master_password)
@@ -520,27 +567,39 @@ class ConnectDialog(tk.Toplevel):
                 self.destroy()
                 return
 
-        # Keep the app's exact logo visible on the one connection page.
-        header = tk.Frame(self, bg="white")
-        header.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        # Use the original logo at native 96x96 size in a clean branded header.
+        header = tk.Frame(self, bg="#0B182A", padx=12, pady=10)
+        header.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 14))
         logo_path = _resource_path(Path("assets") / "mysqlidle-logo.png")
         self.logo_source_image = None
         self.logo_image = None
         if logo_path.is_file():
             try:
-                # Display the original 96x96 logo unchanged; keep the PhotoImage alive.
                 self.logo_source_image = tk.PhotoImage(file=str(logo_path))
                 self.logo_image = self.logo_source_image
-                tk.Label(header, image=self.logo_image, bg="white").pack(side=tk.LEFT, padx=(0, 12))
-            except tk.TclError:
+                tk.Label(
+                    header, image=self.logo_image, bg="#0B182A", bd=0,
+                    highlightthickness=0,
+                ).pack(side=tk.LEFT, padx=(0, 14))
+            except (tk.TclError, OSError):
                 self.logo_image = None
                 self.logo_source_image = None
-        tk.Label(
-            header, text="Connect to MySQL", bg="white", fg="#0b182a",
-            font=("Segoe UI", 15, "bold"),
-        ).pack(side=tk.LEFT, anchor="center")
 
-        row = 1
+        header_copy = tk.Frame(header, bg="#0B182A", bd=0, highlightthickness=0)
+        header_copy.pack(side=tk.LEFT, fill=tk.Y, expand=True, pady=(14, 0))
+        tk.Label(
+            header_copy, text="Connect to MySQL", bg="#0B182A", fg="#FFFFFF",
+            font=("Segoe UI", 16, "bold"), anchor="w",
+        ).pack(anchor="w")
+        tk.Label(
+            header_copy, text="MySQL IDLE desktop workspace", bg="#0B182A",
+            fg="#B9C8DD", font=("Segoe UI", 10), anchor="w",
+        ).pack(anchor="w", pady=(5, 0))
+        tk.Frame(self, bg="#DCE5F1", height=1, bd=0).grid(
+            row=1, column=0, columnspan=3, sticky="ew", pady=(0, 12)
+        )
+
+        row = 2
         self.master_password_entry = None
         self.master_password_confirm_entry = None
         self.first_master_setup = self.require_master_password and self.password_record is None
@@ -1229,9 +1288,10 @@ class MySQLIDLE:
 
         root.title(APP_NAME)
         _apply_window_icon(root)
-        root.geometry("1000x660")
-        root.minsize(620, 380)
-        root.configure(bg="white")
+        _configure_ttk_style(root)
+        root.geometry("1080x720")
+        root.minsize(760, 500)
+        root.configure(bg="#F5F8FC")
 
         families = set(tkfont.families())
         family = next((f for f in ("Consolas", "Menlo", "DejaVu Sans Mono") if f in families), "Courier New")
@@ -1318,19 +1378,68 @@ class MySQLIDLE:
         self.root.config(menu=bar)
 
     def build_ui(self):
-        status = tk.Frame(self.root, bg="#f0f0f0")
+        # Application chrome: show the same untouched logo that appears in the README
+        # and connection page. Display it at its original 96x96 pixels; do not scale it.
+        header = tk.Frame(self.root, bg="#0B182A", padx=18, pady=10)
+        header.pack(side=tk.TOP, fill=tk.X)
+        self.brand_header = header
+        logo_path = _resource_path(Path("assets") / "mysqlidle-logo.png")
+        self.brand_logo_source = None
+        self.brand_logo_image = None
+        if logo_path.is_file():
+            try:
+                self.brand_logo_source = tk.PhotoImage(file=str(logo_path))
+                self.brand_logo_image = self.brand_logo_source
+                self.brand_logo_label = tk.Label(
+                    header, image=self.brand_logo_image, bg="#0B182A", bd=0,
+                    highlightthickness=0,
+                )
+                self.brand_logo_label.pack(side=tk.LEFT, padx=(0, 16))
+            except (tk.TclError, OSError):
+                self.brand_logo_source = None
+                self.brand_logo_image = None
+                self.brand_logo_label = None
+
+        brand_copy = tk.Frame(header, bg="#0B182A", bd=0, highlightthickness=0)
+        brand_copy.pack(side=tk.LEFT, fill=tk.Y, expand=False, pady=(12, 0))
+        tk.Label(
+            brand_copy, text="MySQL IDLE", bg="#0B182A", fg="#FFFFFF",
+            font=("Segoe UI", 18, "bold"), anchor="w",
+        ).pack(anchor="w")
+        tk.Label(
+            brand_copy, text="MySQL / MariaDB SQL workspace", bg="#0B182A",
+            fg="#B9C8DD", font=("Segoe UI", 10), anchor="w",
+        ).pack(anchor="w", pady=(4, 0))
+
+        brand_note = tk.Label(
+            header, text="DESKTOP SQL WORKSPACE", bg="#0B182A", fg="#8FA8C8",
+            font=("Segoe UI", 9, "bold"), padx=12, pady=7,
+            bd=0, highlightthickness=0,
+        )
+        brand_note.pack(side=tk.RIGHT, anchor="center", padx=(8, 4))
+
+        tk.Frame(self.root, bg="#263852", height=1, bd=0).pack(side=tk.TOP, fill=tk.X)
+
+        status = tk.Frame(self.root, bg="#EAF0F7", padx=10, pady=5)
         status.pack(side=tk.BOTTOM, fill=tk.X)
         self.status_var = tk.StringVar(value="Not connected")
         self.hint_var = tk.StringVar()
-        tk.Label(status, textvariable=self.status_var, bg="#f0f0f0", anchor="w", padx=8).pack(side=tk.LEFT)
-        tk.Label(status, textvariable=self.hint_var, bg="#f0f0f0", fg="#666666", anchor="e", padx=8).pack(side=tk.RIGHT)
+        tk.Label(
+            status, textvariable=self.status_var, bg="#EAF0F7", fg="#334155",
+            anchor="w", padx=4, font=("Segoe UI", 9),
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            status, textvariable=self.hint_var, bg="#EAF0F7", fg="#64748B",
+            anchor="e", padx=4, font=("Segoe UI", 9),
+        ).pack(side=tk.RIGHT)
 
-        frame = tk.Frame(self.root, bg="white")
+        frame = tk.Frame(self.root, bg="#F5F8FC", padx=10, pady=10)
         frame.pack(fill=tk.BOTH, expand=True)
         self.text = tk.Text(
-            frame, wrap=tk.NONE, font=self.font, bg="white", fg="black",
-            insertbackground="black", relief=tk.FLAT, undo=False, padx=8, pady=6,
-            selectbackground="#c9defa", selectforeground="black",
+            frame, wrap=tk.NONE, font=self.font, bg="#FFFFFF", fg="#172033",
+            insertbackground="#2563EB", relief=tk.FLAT, undo=False, padx=14, pady=12,
+            selectbackground="#C9DDFB", selectforeground="#14213A",
+            highlightthickness=1, highlightbackground="#E2E8F0", highlightcolor="#93B4E8",
         )
         ys = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.text.yview)
         xs = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=self.text.xview)
@@ -1341,13 +1450,13 @@ class MySQLIDLE:
 
         t = self.text
         # Later tags have higher priority, like IDLE's colours.
-        t.tag_configure("kw", foreground="#ff7700")
-        t.tag_configure("str", foreground="#00aa00")
-        t.tag_configure("comment", foreground="#dd0000")
-        t.tag_configure("prompt", foreground="#1a4fd6")
-        t.tag_configure("error", foreground="#b00020")
-        t.tag_configure("ok", foreground="#0a7d2c")
-        t.tag_configure("info", foreground="#6b6b6b")
+        t.tag_configure("kw", foreground="#C45B0A")
+        t.tag_configure("str", foreground="#16803C")
+        t.tag_configure("comment", foreground="#B42318")
+        t.tag_configure("prompt", foreground="#2457C5")
+        t.tag_configure("error", foreground="#B42318")
+        t.tag_configure("ok", foreground="#18794E")
+        t.tag_configure("info", foreground="#64748B")
         t.tag_raise("sel")
 
         self.context_menu = tk.Menu(self.root, tearoff=0)

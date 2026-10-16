@@ -111,16 +111,15 @@ The APK is signed and the release workflow checks its signature, target API, per
 
 1. Download `MySQLIDLE-Setup.exe` from the [latest successful GitHub release](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases).
 2. Run the installer. The default installation is under your Windows user's local application-data programs directory and is designed for per-user installation.
-3. Use the Start Menu or desktop shortcut to launch **MySQL IDLE**.
-4. On first launch, create the master password described below.
-5. Open **File → Connect** (or press `Ctrl+N`) and enter the connection details for your MySQL/MariaDB server.
+3. Use the Start Menu or desktop shortcut to launch **MySQL IDLE**. The branded **Connect to MySQL** page opens automatically.
+4. On first launch, create and confirm the master password in that same page, then fill in the MySQL/MariaDB connection fields and select **Connect**. On later launches, enter the existing master password in the same form; there is no separate unlock window.
 
 Alternative packages:
 
 - **Portable EXE:** download `MySQLIDLE_Portable.exe` and run it directly.
 - **Folder ZIP:** extract the archive completely and run `mysql_idle.exe` from the extracted folder. Do not move the executable away from its accompanying `_internal` files.
 
-The installer creates desktop and Start Menu shortcuts. On uninstall, the interactive uninstaller asks separately whether to remove the current Windows account's local MySQL IDLE settings and logs. Choosing **No** preserves them. A silent uninstall keeps user settings by default. Uninstalling MySQL IDLE does not delete MySQL databases.
+The installer creates desktop and Start Menu shortcuts. Uninstall uses Inno Setup's native file-and-shortcut cleanup and preserves per-user settings and logs so it cannot accidentally delete your local master-password verifier or connection preferences. To remove those files manually after uninstalling, close MySQL IDLE and delete `%LOCALAPPDATA%\MySQL IDLE`. Uninstalling MySQL IDLE never deletes MySQL databases.
 
 ## Run from source
 

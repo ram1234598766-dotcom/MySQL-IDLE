@@ -42,7 +42,7 @@ class PackagingBrandingTests(unittest.TestCase):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn("PyMySQL>=1.2.3,<2.0", requirements)
 
-    def test_installer_is_branded_and_removes_installed_program_files(self):
+    def test_installer_is_branded_and_uses_native_uninstall_flow(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         for expected in (
             "SetupIconFile=",
@@ -51,17 +51,26 @@ class PackagingBrandingTests(unittest.TestCase):
             "UninstallDisplayIcon=",
             "[Files]",
             "recursesubdirs createallsubdirs",
-            "CurUninstallStepChanged",
-            "InitializeUninstallProgressForm",
-            "npbstMarquee",
-            "UninstallSilent",
-            "local settings, SQL history",
-            "MB_YESNO or MB_DEFBUTTON2",
-            "DelTree(DataDir, True, True, True)",
+            "[Icons]",
+            "[Run]",
+            "WizardStyle=modern dynamic includetitlebar",
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, source)
-        self.assertNotIn('[UninstallDelete]\nType: filesandordirs; Name: "{app}"', source)
+        # Keep uninstallation on Inno Setup's native path. Custom Pascal callbacks
+        # caused a user-reported "Could not call proc" runtime error in uninstall.
+        for unsafe_callback in (
+            "[Code]",
+            "InitializeUninstall",
+            "InitializeUninstallProgressForm",
+            "CurUninstallStepChanged",
+            "UninstallSilent",
+            "DelTree(",
+            "npbstMarquee",
+        ):
+            with self.subTest(unsafe_callback=unsafe_callback):
+                self.assertNotIn(unsafe_callback, source)
+        self.assertNotIn('[UninstallDelete]\\nType: filesandordirs; Name: "{app}"', source)
         self.assertNotIn("WizardSilent", source)
 
     def test_setup_wizard_artwork_uses_the_same_logo_without_redesign(self):
@@ -99,6 +108,37 @@ class PackagingBrandingTests(unittest.TestCase):
             self.assertEqual(list(actual_small.convert("RGB").getdata()), list(expected_small.getdata()),
                              "Small wizard image must use the same source artwork.")
 
+    def test_main_workspace_renders_the_original_logo_with_refined_desktop_chrome(self):
+        desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
+        generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
+        source = (ROOT / "assets" / "mysqlidle-logo.png").read_bytes()
+
+        self.assertIn("self.brand_header = header", desktop)
+        self.assertIn("window.iconbitmap(default=str(icon_path))", desktop)
+        self.assertIn("if not icon_set and logo_path.is_file()", desktop)
+        self.assertIn("_apply_window_icon(self)", desktop)
+        self.assertIn('header = tk.Frame(self, bg="#0B182A", padx=12, pady=10)', desktop)
+        self.assertIn('text="MySQL IDLE desktop workspace"', desktop)
+        self.assertIn('self.brand_logo_source = tk.PhotoImage(file=str(logo_path))', desktop)
+        self.assertIn("self.brand_logo_image = self.brand_logo_source", desktop)
+        self.assertIn('text="MySQL IDLE"', desktop)
+        self.assertIn('root.geometry("1080x720")', desktop)
+        self.assertIn('root.minsize(760, 500)', desktop)
+        self.assertIn("def _configure_ttk_style(root)", desktop)
+        self.assertIn('style.configure("TButton", padding=(12, 7)', desktop)
+        self.assertIn("icon_set = False", desktop)
+        self.assertIn("if not icon_set and logo_path.is_file()", desktop)
+        self.assertIn("self.logo_image = self.logo_source_image", desktop)
+        self.assertNotIn(".subsample(", desktop)
+
+        # Main workspace and connection page resolve the same unmodified PNG source.
+        with Image.open(ROOT / "assets" / "mysqlidle-logo.png") as image:
+            self.assertEqual(image.size, (96, 96))
+            self.assertEqual(image.format, "PNG")
+        self.assertGreater(len(source), 0)
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
+        self.assertIn("Use the generated multi-size ICO where supported, avoiding DPI-induced blur.", desktop)
+
     def test_windows_startup_requires_master_password_and_android_uses_same_verifier(self):
         desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
         companion = (ROOT / "mobile_companion.py").read_text(encoding="utf-8")
@@ -122,7 +162,7 @@ class PackagingBrandingTests(unittest.TestCase):
 
     def test_installer_creates_desktop_shortcut_with_explicit_shared_icon(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
-        self.assertIn("WizardStyle=modern dynamic polar includetitlebar", source)
+        self.assertIn("WizardStyle=modern dynamic includetitlebar", source)
         self.assertIn('UninstallDisplayIcon={app}\\_internal\\assets\\mysqlidle.ico', source)
         self.assertIn('Name: "{autodesktop}\\MySQL IDLE"', source)
         self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
