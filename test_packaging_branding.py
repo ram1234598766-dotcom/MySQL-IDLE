@@ -105,6 +105,11 @@ class PackagingBrandingTests(unittest.TestCase):
         source = (ROOT / "assets" / "mysqlidle-logo.png").read_bytes()
 
         self.assertIn("self.brand_header = header", desktop)
+        self.assertIn("window.iconbitmap(default=str(icon_path))", desktop)
+        self.assertIn("if not icon_set and logo_path.is_file()", desktop)
+        self.assertIn("_apply_window_icon(self)", desktop)
+        self.assertIn('header = tk.Frame(self, bg="#0B182A", padx=12, pady=10)', desktop)
+        self.assertIn('text="MySQL IDLE desktop workspace"', desktop)
         self.assertIn('self.brand_logo_source = tk.PhotoImage(file=str(logo_path))', desktop)
         self.assertIn("self.brand_logo_image = self.brand_logo_source", desktop)
         self.assertIn('text="MySQL IDLE"', desktop)
