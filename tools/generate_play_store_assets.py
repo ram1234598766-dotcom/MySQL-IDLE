@@ -31,11 +31,20 @@ def bg(size,light=False):
     return im
 
 def logo(path,size=512):
-    """Resize the supplied icon directly, preserving RGBA pixels and aspect handling as requested."""
+    """Use the exact supplied logo; enlarge with nearest-neighbor and never distort its aspect ratio."""
     target = size if isinstance(size, tuple) else (size, size)
     with Image.open(path) as src:
         src.load()
-        return src.convert("RGBA").resize(target, Image.Resampling.LANCZOS)
+        mark = src.convert("RGBA")
+    if isinstance(size, tuple):
+        width, height = target
+        scale = min(width / mark.width, height / mark.height)
+        mark_size = (max(1, round(mark.width * scale)), max(1, round(mark.height * scale)))
+        mark = mark.resize(mark_size, Image.Resampling.NEAREST)
+        canvas = Image.new("RGBA", target, (*BG, 255))
+        canvas.alpha_composite(mark, ((width - mark.width) // 2, (height - mark.height) // 2))
+        return canvas
+    return mark.resize(target, Image.Resampling.NEAREST)
 
 def box(d,xy,fill=PANEL,outline=LINE,r=18,w=2): d.rounded_rectangle(xy,radius=r,fill=fill,outline=outline,width=w)
 def text(d,xy,s,size=24,color=TEXT,bold=False,anchor=None,mono=False): d.text(xy,s,font=f(size,bold,mono),fill=color,anchor=anchor)
@@ -63,7 +72,7 @@ def button(d,x,y,w,label,primary=True,dark=True,h=62):
     text(d,(x+w/2,y+h/2),label,22,WHITE if primary or dark else INK,True,"mm")
 def header(im,lg,connected=False):
     d=ImageDraw.Draw(im); w=im.width; d.rectangle((0,0,w,156),fill=BG); d.line((0,155,w,155),fill=LINE,width=2)
-    mark=lg.resize((92,92),Image.Resampling.LANCZOS); im.paste(mark,(34,32),mark)
+    mark=lg.resize((92,92),Image.Resampling.NEAREST); im.paste(mark,(34,32),mark)
     text(d,(148,36),"MySQL IDLE",42,TEXT,True); text(d,(148,91),"Android companion · SQL workspace",23,MUTED)
     label="Connected" if connected else "Not connected"; bw=190 if connected else 225
     box(d,(w-bw-30,54,w-30,106),(19,54,48) if connected else (35,47,68),LINE,23,2)
@@ -78,7 +87,7 @@ def status(d,w,light=False):
 
 def phone_connect(lg,p):
     im=bg((1080,1920),True); d=ImageDraw.Draw(im); status(d,1080,True)
-    mark=lg.resize((140,140),Image.Resampling.LANCZOS); im.paste(mark,(44,100),mark)
+    mark=lg.resize((140,140),Image.Resampling.NEAREST); im.paste(mark,(44,100),mark)
     d=ImageDraw.Draw(im); text(d,(214,112),"MySQL IDLE",56,INK,True); text(d,(216,182),"Mobile companion",36,BLUE,True)
     y=305; text(d,(54,y),"Connect to the desktop",40,INK,True); y+=54; text(d,(54,y),"companion",40,INK,True); y+=74
     y=wrapped(d,(54,y),"On Windows, open Tools → Android / Mobile Companion. Enter the HTTPS address and compare the full SHA-256 fingerprint before connecting.",27,960,LIGHT)+26
@@ -156,23 +165,23 @@ def wide(path,title,mode):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1]); args=p.parse_args()
-    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo-reference.webp"
+    root=args.root.resolve(); src=root/"assets"/"mysqlidle-logo.png"
     if not src.is_file(): raise SystemExit("Required source logo not found: "+str(src))
     out=root/"dist"/"google-play-assets"; out.mkdir(parents=True,exist_ok=True); lg=logo(src)
     # Exact uploaded image resized only; preserve its original transparent corner pixels.
     lg.save(out/"app-icon-512.png",format="PNG",optimize=True)
     android=root/"android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
     if not android.parent.is_dir(): raise SystemExit("Android icon resource folder missing: "+str(android.parent))
-    # Convert the exact README logo to PNG at its native resolution; do not downscale it.
+    # Keep every source pixel exact while preparing a crisp 512px Android drawable.
     with Image.open(src) as source_logo:
         source_logo.load()
-        embedded_logo = source_logo.convert("RGBA")
-    embedded_logo.save(android, format="PNG", optimize=True)
-    with Image.open(android) as embedded_check, Image.open(src) as source_check:
-        if embedded_check.size != source_check.size:
-            raise SystemExit("Android logo resource must preserve the README logo's native resolution.")
-    # Exact uploaded image resized directly to the requested feature-graphic dimensions.
-    # No added background, text, masking, padding, or decorative elements.
+        expected_android = source_logo.convert("RGBA").resize((512, 512), Image.Resampling.NEAREST)
+    expected_android.save(android, format="PNG", optimize=True)
+    with Image.open(android) as embedded_check:
+        if embedded_check.size != (512, 512) or list(embedded_check.convert("RGBA").getdata()) != list(expected_android.getdata()):
+            raise SystemExit("Android drawable must be a nearest-neighbor 512px version of the exact README logo.")
+    # A store feature graphic needs a 1024x500 canvas; the square logo is centered
+    # without stretching, cropping, recoloring, or adding text to the artwork.
     fg=logo(src,(1024,500))
     fg.save(out/"feature-graphic-1024x500.png",format="PNG",optimize=True)
     for name,fn in [("phone-01-connect-and-verify-1080x1920.png",phone_connect),("phone-02-unlock-and-pair-1080x1920.png",phone_pair),("phone-03-mysql-connection-1080x1920.png",phone_connection),("phone-04-sql-editor-and-results-1080x1920.png",phone_query)]: fn(lg,out/name)
@@ -183,12 +192,12 @@ def main():
     files=[]
     for x in sorted(out.rglob("*.png")):
         with Image.open(x) as im: files.append({"file":x.relative_to(out).as_posix(),"width":im.width,"height":im.height,"bytes":x.stat().st_size})
-    manifest={"product":"MySQL IDLE Mobile","notes":["512x512 PNG directly resized from the uploaded MySQL IDLE logo, preserving transparency.","1024x500 feature graphic.","Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered previews based on the current UI; verify against the final build on a real device before submission.","XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists."],"assets":files}
+    manifest={"product":"MySQL IDLE Mobile","notes":["512x512 PNG upscaled from the exact README logo using nearest-neighbor resampling to avoid blur.","1024x500 feature graphic with the original square logo centered proportionally on a dark canvas; the logo itself is not stretched or redrawn.","Four 1080x1920 phone screenshots and twelve 1920x1080 tablet/desktop previews are rendered previews based on the current UI; verify against the final build on a real device before submission.","XR assets are omitted because this companion is not an XR app. Video fields are omitted until a real public/unlisted YouTube video exists."],"assets":files}
     (out/"ASSET-MANIFEST.json").write_text(json.dumps(manifest,indent=2),encoding="utf-8")
     zip_path=root/"dist"/"MySQLIDLE-Play-Store-Assets.zip"
     with zipfile.ZipFile(zip_path,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as z:
         for x in sorted(out.rglob("*")):
             if x.is_file(): z.write(x,x.relative_to(out.parent))
-    print("Generated direct resized 512x512 and 1024x500 logo files, shared app branding, screenshot previews and ZIP.")
+    print("Generated shared branding and Google Play assets from assets/mysqlidle-logo.png without redrawing the logo.")
 
 if __name__=="__main__": main()
