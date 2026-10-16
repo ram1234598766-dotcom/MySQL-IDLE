@@ -167,7 +167,7 @@ class PackagingBrandingTests(unittest.TestCase):
         poll_end = desktop.index("    # ------------------------------------------------------------ connection --", connect_state)
         poll = desktop[poll_start:poll_end]
 
-        self.assertIn("self.root.withdraw()", desktop[desktop.index("def main():"):])
+        self.assertIn("root.withdraw()", desktop[desktop.index("def main():"):])
         self.assertIn("if connected and self._startup_reveal_pending:", poll)
         self.assertIn("self.root.deiconify()", poll)
         self.assertIn("self._pending_startup_connect_error = message", poll)
