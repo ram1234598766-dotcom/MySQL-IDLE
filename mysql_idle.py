@@ -1205,6 +1205,7 @@ class MySQLIDLE:
         self.worker = DatabaseWorker(self.events, self.governor)
         self.connected = False
         self.master_authenticated = False
+        self.startup_connect_pending = True
         self.conn_info = {}
         self.current_db = None
         self.identifiers = set()      # database / table / column names for Tab completion
@@ -1796,19 +1797,23 @@ class MySQLIDLE:
             "database": "", "ssl_ca": "", "tls_verify": DEFAULT_MYSQL_TLS_VERIFY,
         }
         defaults.update(self.cfg.get("last_connection", {}))
+        initial_page = self.startup_connect_pending
         dialog = ConnectDialog(
-            self.root, defaults, require_master_password=not self.master_authenticated
+            self.root, defaults, require_master_password=initial_page
         )
         if dialog.master_authenticated:
             self.master_authenticated = True
         if dialog.result:
+            self.startup_connect_pending = False
             self.root.deiconify()
             self.connect(**dialog.result)
             self.text.focus_set()
-        elif not self.master_authenticated:
-            # The initial connection page is the only authentication surface.
-            # Closing it before local authentication must not leave an unlocked shell running.
+        elif initial_page:
+            # Canceling the initial page closes the hidden shell, even if the master
+            # password was verified but the user chose not to connect.
             self.on_close()
+        else:
+            self.text.focus_set()
 
     def connect(self, host, port, user, password, database, ssl_ca="", tls_verify=DEFAULT_MYSQL_TLS_VERIFY):
         self._queue_job("connect", {
