@@ -45,6 +45,10 @@ MySQL IDLE provides a lightweight, IDLE-style desktop shell for writing and runn
 - Keep the interface responsive while a query runs on a background worker thread.
 - Cancel the active query with `Ctrl+Break` when the connected MySQL account has permission to do so.
 - Save the shell output to a log file when needed.
+- Format the current statement with **Ctrl+Shift+F** without modifying quoted strings, quoted identifiers, or comments.
+- Prepare an `EXPLAIN` plan for one `SELECT` using **Ctrl+Shift+E**; it inserts the statement for review and never executes it automatically.
+- Copy the current SQL statement with **Ctrl+Shift+C**.
+- Save and reinsert named SQL snippets; Windows stores snippets locally only after an explicit save action.
 - Use guarded SQL execution and read-only policy options through **Tools → Feature Governance**.
 
 ### Optional Android companion
@@ -52,7 +56,9 @@ MySQL IDLE provides a lightweight, IDLE-style desktop shell for writing and runn
 - Use a responsive SQL interface in the Android app, linked to the desktop-hosted companion.
 - Pair with the Windows master password and a temporary code shown on the desktop.
 - Verify the desktop HTTPS certificate by comparing its complete SHA-256 fingerprint before connecting.
-- Keep credentials and mobile query history session-only rather than saving them in persistent browser storage.
+- Keep credentials, query history, and named SQL snippets session-only rather than saving them in persistent browser storage.
+- Format SQL, prepare a reviewed `EXPLAIN SELECT` statement, or copy the editor contents without leaving the mobile workspace.
+- Save up to 20 named snippets in memory for the current mobile session; they are discarded when the session is cleared or the page reloads.
 - Use query history and quick templates for common read-only checks, such as server version, current database, database/table lists, and server time.
 
 ### Security-minded defaults
@@ -340,6 +346,7 @@ This directory contains app settings, the master-password verifier and diagnosti
 
 - `settings.json` — connection preferences and other local settings. The MySQL password is removed before settings are written.
 - `master_password.json` — the master-password verifier, not the master password in plaintext.
+- `sql_snippets.json` — only SQL statements you explicitly choose to save. Avoid storing sensitive literals in snippets; the file stays in this Windows user profile.
 - `logs\` — diagnostic logs.
 - Temporary query-result CSV files are stored for result processing and are normally cleaned up when the session/app closes.
 
