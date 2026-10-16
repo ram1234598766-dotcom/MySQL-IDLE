@@ -371,7 +371,7 @@ Install JDK 17 and Android SDK Platform 36/build tools. The exact logo is alread
 
 ```powershell
 Set-Location android-app
-gradle --no-daemon assembleDebug
+gradle --no-daemon assembleDebug bundleDebug
 ```
 
 Expected debug output:
