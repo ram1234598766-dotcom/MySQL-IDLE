@@ -1842,7 +1842,7 @@ class MySQLIDLE:
             self.root.update_idletasks()
             self.status_var.set("Current SQL copied to the clipboard.")
         except tk.TclError as exc:
-            messagebox.showerror("Copy SQL", f"Could not access the clipboard.\\n\\n{exc}", parent=self.root)
+            messagebox.showerror("Copy SQL", f"Could not access the clipboard.\n\n{exc}", parent=self.root)
 
     def save_sql_snippet(self):
         sql = self._current_sql()
