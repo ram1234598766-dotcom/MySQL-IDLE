@@ -22,8 +22,9 @@ def _contained_logo(max_width: int, max_height: int) -> Image.Image:
     with Image.open(LOGO_SOURCE) as source:
         source.load()
         logo = source.convert("RGBA")
-    logo.thumbnail((max_width, max_height), Image.Resampling.NEAREST)
-    return logo
+    scale = min(max_width / logo.width, max_height / logo.height)
+    size = (max(1, round(logo.width * scale)), max(1, round(logo.height * scale)))
+    return logo.resize(size, Image.Resampling.NEAREST)
 
 
 def _render_mark(size: int) -> Image.Image:
