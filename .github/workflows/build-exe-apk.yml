@@ -262,6 +262,13 @@ jobs:
             Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
           }
 
+          # User data must survive native uninstall. This also exercises cleanup with a
+          # real per-user data file, rather than testing only an empty profile.
+          $userDataDir = Join-Path $env:LOCALAPPDATA "MySQL IDLE"
+          New-Item -ItemType Directory -Path $userDataDir -Force | Out-Null
+          $userDataMarker = Join-Path $userDataDir "preserve-on-uninstall.test"
+          Set-Content -LiteralPath $userDataMarker -Value "keep" -Encoding ascii
+
           $uninstaller = Get-ChildItem -Path $installDir -Filter "unins*.exe" -File | Select-Object -First 1
           if (!$uninstaller) { throw "Installer did not register an uninstaller." }
           $uninstallLog = Join-Path $env:RUNNER_TEMP "mysqlidle-uninstall.log"
@@ -276,7 +283,9 @@ jobs:
           $startMenuShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\MySQL IDLE.lnk"
           if (Test-Path $startMenuShortcut) { throw "Uninstaller left the Start Menu shortcut behind." }
           if (Test-Path $desktopShortcut) { throw "Uninstaller left the desktop shortcut behind." }
-          Write-Host "Installer launch, branded Desktop/Start Menu shortcuts, and uninstall cleanup smoke tests passed."
+          if (!(Test-Path $userDataMarker)) { throw "Uninstaller unexpectedly deleted user settings data." }
+          Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "Installer launch, shortcuts, native uninstall cleanup, and user-data preservation smoke tests passed."
       - name: Sign Windows installer
         if: env.WINDOWS_SIGNING_ENABLED == 'true'
         shell: pwsh
