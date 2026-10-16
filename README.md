@@ -119,7 +119,7 @@ Alternative packages:
 - **Portable EXE:** download `MySQLIDLE_Portable.exe` and run it directly.
 - **Folder ZIP:** extract the archive completely and run `mysql_idle.exe` from the extracted folder. Do not move the executable away from its accompanying `_internal` files.
 
-The installer creates desktop and Start Menu shortcuts. On uninstall, the interactive uninstaller asks separately whether to remove the current Windows account's local MySQL IDLE settings and logs. Choosing **No** preserves them. A silent uninstall keeps user settings by default. Uninstalling MySQL IDLE does not delete MySQL databases.
+The installer creates desktop and Start Menu shortcuts. Uninstall uses Inno Setup's native file-and-shortcut cleanup and preserves per-user settings and logs so it cannot accidentally delete your local master-password verifier or connection preferences. To remove those files manually after uninstalling, close MySQL IDLE and delete `%LOCALAPPDATA%\\MySQL IDLE`. Uninstalling MySQL IDLE never deletes MySQL databases.
 
 ## Run from source
 
