@@ -65,12 +65,19 @@ def main() -> None:
     if not LOGO_SOURCE.is_file():
         raise FileNotFoundError(f"Required app logo is missing: {LOGO_SOURCE}")
     ASSETS.mkdir(parents=True, exist_ok=True)
-    icon = _render_mark(256)
+    icon_sizes = [
+        (16, 16), (24, 24), (32, 32), (48, 48),
+        (64, 64), (96, 96), (128, 128), (256, 256),
+    ]
+    # Pre-render each icon size from the original PNG with nearest-neighbor scaling.
+    # Passing those exact frames prevents Pillow from applying an extra blurred resize.
+    icon_frames = [_render_mark(size[0]) for size in icon_sizes]
+    icon = next(frame for frame in icon_frames if frame.size == (256, 256))
     icon.save(
         ASSETS / "mysqlidle.ico",
         format="ICO",
-        sizes=[(16, 16), (24, 24), (32, 32), (48, 48),
-               (64, 64), (128, 128), (256, 256)],
+        sizes=icon_sizes,
+        append_images=[frame for frame in icon_frames if frame is not icon],
     )
     _wizard_image().save(ASSETS / "wizard-image.bmp", format="BMP")
     _wizard_small().save(ASSETS / "wizard-small.bmp", format="BMP")
