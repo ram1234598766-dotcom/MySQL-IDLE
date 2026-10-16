@@ -17,7 +17,7 @@ class SqlFormatterTests(unittest.TestCase):
         self.assertIn("'from where; it''s fine'", formatted)
         self.assertIn("`select`", formatted)
         self.assertIn("-- order by private\n", formatted)
-        self.assertIn("WHERE name='select';", formatted)
+        self.assertIn("WHERE name = 'select';", formatted)
 
     def test_empty_and_whitespace_input_is_stable(self):
         self.assertEqual(format_sql(""), "")
