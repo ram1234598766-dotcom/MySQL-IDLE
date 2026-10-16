@@ -39,10 +39,12 @@ def _render_mark(size: int) -> Image.Image:
 
 
 def _wizard_image() -> Image.Image:
-    """Use only the shared logo in the Inno Setup wizard panel—no alternate artwork."""
+    """Place the untouched 96x96 logo in the installer panel without scaling it."""
     width, height = 164, 314
     image = Image.new("RGB", (width, height), NAVY)
-    logo = _contained_logo(154, 154)
+    with Image.open(LOGO_SOURCE) as source:
+        source.load()
+        logo = source.convert("RGBA")
     image.paste(
         logo,
         ((width - logo.width) // 2, (height - logo.height) // 2),
@@ -52,16 +54,8 @@ def _wizard_image() -> Image.Image:
 
 
 def _wizard_small() -> Image.Image:
-    """Use the same logo in the small setup-wizard brand slot."""
-    width = height = 55
-    image = Image.new("RGB", (width, height), WHITE)
-    logo = _contained_logo(51, 51)
-    image.paste(
-        logo,
-        ((width - logo.width) // 2, (height - logo.height) // 2),
-        logo,
-    )
-    return image
+    """Create the installer-required 55x55 version using nearest-neighbor only."""
+    return _contained_logo(55, 55).convert("RGB")
 
 
 def main() -> None:
