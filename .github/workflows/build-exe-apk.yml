@@ -532,7 +532,7 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "replaced=true" >> "$GITHUB_OUTPUT"
           echo "New Android release signing key generated and validated."
-      - name: Build release-signed APK and Play Store App Bundle
+      - name: Build release-signed APK and Android App Bundle
         if: env.ANDROID_SIGNING_ENABLED == 'true'
         working-directory: android-app
         env:
