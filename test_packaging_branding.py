@@ -18,6 +18,21 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
         self.assertTrue((ROOT / "assets" / "mysqlidle-logo.png").is_file())
 
+    def test_windows_ico_sizes_are_direct_nearest_neighbor_resizes_of_the_original(self):
+        source_path = ROOT / "assets" / "mysqlidle-logo.png"
+        icon_path = ROOT / "assets" / "mysqlidle.ico"
+        sizes = {(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (96, 96), (128, 128), (256, 256)}
+        with Image.open(source_path) as source_image:
+            source = source_image.convert("RGBA")
+        with Image.open(icon_path) as icon:
+            self.assertEqual(icon.ico.sizes(), sizes)
+            for size in sorted(sizes):
+                with self.subTest(size=size):
+                    actual = icon.ico.getimage(size).convert("RGBA")
+                    expected = source.resize(size, Image.Resampling.NEAREST)
+                    self.assertEqual(list(actual.getdata()), list(expected.getdata()),
+                                     "Every Windows ICO frame must come directly from the original logo without blur.")
+
     def test_windows_mysql_connection_defaults_to_certificate_optional_tls(self):
         source = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
         self.assertIn("DEFAULT_MYSQL_TLS_VERIFY = False", source)
