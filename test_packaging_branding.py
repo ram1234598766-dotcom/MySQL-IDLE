@@ -71,7 +71,6 @@ class PackagingBrandingTests(unittest.TestCase):
         with Image.open(ROOT / "assets" / "wizard-image.bmp") as actual_panel:
             self.assertEqual(actual_panel.size, (164, 314))
             mark = source.copy()
-            mark = mark.resize((154, 154), Image.Resampling.NEAREST)
             expected_panel = Image.new("RGB", (164, 314), (11, 24, 42))
             expected_panel.paste(mark, ((164 - mark.width) // 2, (314 - mark.height) // 2), mark)
             self.assertEqual(list(actual_panel.convert("RGB").getdata()), list(expected_panel.getdata()),
@@ -80,10 +79,9 @@ class PackagingBrandingTests(unittest.TestCase):
         # The small wizard badge must also be just the same fitted source image.
         with Image.open(ROOT / "assets" / "wizard-small.bmp") as actual_small:
             self.assertEqual(actual_small.size, (55, 55))
-            mark = source.copy()
-            mark = mark.resize((51, 51), Image.Resampling.NEAREST)
-            expected_small = Image.new("RGB", (55, 55), (248, 250, 252))
-            expected_small.paste(mark, ((55 - mark.width) // 2, (55 - mark.height) // 2), mark)
+            mark = source.resize((55, 55), Image.Resampling.NEAREST)
+            expected_small = Image.new("RGB", (55, 55), (11, 24, 42))
+            expected_small.paste(mark, (0, 0), mark)
             self.assertEqual(list(actual_small.convert("RGB").getdata()), list(expected_small.getdata()),
                              "Small wizard image must use the same source artwork.")
 
