@@ -42,7 +42,7 @@ class PackagingBrandingTests(unittest.TestCase):
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn("PyMySQL>=1.2.3,<2.0", requirements)
 
-    def test_installer_is_branded_and_removes_installed_program_files(self):
+    def test_installer_is_branded_and_uses_native_uninstall_flow(self):
         source = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
         for expected in (
             "SetupIconFile=",
@@ -51,17 +51,26 @@ class PackagingBrandingTests(unittest.TestCase):
             "UninstallDisplayIcon=",
             "[Files]",
             "recursesubdirs createallsubdirs",
-            "CurUninstallStepChanged",
-            "InitializeUninstallProgressForm",
-            "npbstMarquee",
-            "UninstallSilent",
-            "local settings, SQL history",
-            "MB_YESNO or MB_DEFBUTTON2",
-            "DelTree(DataDir, True, True, True)",
+            "[Icons]",
+            "[Run]",
+            "WizardStyle=modern dynamic includetitlebar",
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, source)
-        self.assertNotIn('[UninstallDelete]\nType: filesandordirs; Name: "{app}"', source)
+        # Keep uninstallation on Inno Setup's native path. Custom Pascal callbacks
+        # caused a user-reported "Could not call proc" runtime error in uninstall.
+        for unsafe_callback in (
+            "[Code]",
+            "InitializeUninstall",
+            "InitializeUninstallProgressForm",
+            "CurUninstallStepChanged",
+            "UninstallSilent",
+            "DelTree(",
+            "npbstMarquee",
+        ):
+            with self.subTest(unsafe_callback=unsafe_callback):
+                self.assertNotIn(unsafe_callback, source)
+        self.assertNotIn('[UninstallDelete]\\nType: filesandordirs; Name: "{app}"', source)
         self.assertNotIn("WizardSilent", source)
 
     def test_setup_wizard_artwork_uses_the_same_logo_without_redesign(self):
