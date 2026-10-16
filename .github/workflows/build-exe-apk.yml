@@ -107,6 +107,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed.' }
           & $env:MYSQLIDLE_PYTHON -m pip install -r requirements.txt pyinstaller==6.22.3 pillow==12.3.0
           if ($LASTEXITCODE -ne 0) { throw 'Windows build dependencies installation failed.' }
+      - name: Sync exact original logo into Android resource
+        run: '& $env:MYSQLIDLE_PYTHON tools/sync_logo_resources.py'
       - name: Generate branded Windows assets
         run: '& $env:MYSQLIDLE_PYTHON tools/generate_brand_assets.py'
       - name: Run regression tests
