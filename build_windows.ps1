@@ -13,6 +13,9 @@ py -3.15 -m pip install -r requirements.txt pyinstaller==6.22.3 pillow==12.3.0
 py -3.15 -m pip check
 if ($LASTEXITCODE -ne 0) { throw 'Python dependency consistency check failed.' }
 
+py -3.15 tools/sync_logo_resources.py
+if ($LASTEXITCODE -ne 0) { throw 'Exact logo resource sync failed.' }
+
 py -3.15 tools/generate_brand_assets.py
 if ($LASTEXITCODE -ne 0) { throw 'Brand asset generation failed.' }
 

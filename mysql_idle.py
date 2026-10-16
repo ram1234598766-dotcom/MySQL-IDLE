@@ -485,27 +485,136 @@ class ConnectDialog(tk.Toplevel):
         ("Host", "host", False),
         ("Port", "port", False),
         ("User", "user", False),
-        ("Password", "password", True),
+        ("MySQL account password", "password", True),
         ("Database (optional)", "database", False),
         ("MySQL CA certificate (optional)", "ssl_ca", False),
     ]
 
-    def __init__(self, parent, defaults):
+    def __init__(self, parent, defaults, require_master_password=False):
         super().__init__(parent, bg="white", padx=16, pady=14)
         self.title("Connect to MySQL")
         self.resizable(False, False)
-        self.transient(parent)
         self.result = None
+        self.require_master_password = bool(require_master_password)
+        self.master_authenticated = not self.require_master_password
+        self.master_auth_unavailable = False
+        self.password_record = None
+        self.master_attempts = 0
+        self.master_password_var = None
+        self.master_password_confirm_var = None
         self.vars = {}
         entries = {}
 
-        for row, (label, key, secret) in enumerate(self.FIELDS):
+        if self.require_master_password:
+            try:
+                self.password_record = load_password_record(MASTER_PASSWORD_PATH)
+            except (OSError, ValueError) as exc:
+                logging.exception("Could not load the MySQL IDLE master-password verifier")
+                self.master_auth_unavailable = True
+                messagebox.showerror(
+                    "Master password unavailable",
+                    "The master-password record could not be read. Startup is blocked; "
+                    "the password will not be reset automatically.\n\n" + str(exc),
+                    parent=parent,
+                )
+                self.destroy()
+                return
+
+        # Keep the app's exact logo visible on the one connection page.
+        header = tk.Frame(self, bg="white")
+        header.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        logo_path = _resource_path(Path("assets") / "mysqlidle-logo.png")
+        self.logo_source_image = None
+        self.logo_image = None
+        if logo_path.is_file():
+            try:
+                # Display the original 96x96 logo unchanged; keep the PhotoImage alive.
+                self.logo_source_image = tk.PhotoImage(file=str(logo_path))
+                self.logo_image = self.logo_source_image
+                tk.Label(header, image=self.logo_image, bg="white").pack(side=tk.LEFT, padx=(0, 12))
+            except tk.TclError:
+                self.logo_image = None
+                self.logo_source_image = None
+        tk.Label(
+            header, text="Connect to MySQL", bg="white", fg="#0b182a",
+            font=("Segoe UI", 15, "bold"),
+        ).pack(side=tk.LEFT, anchor="center")
+
+        row = 1
+        self.master_password_entry = None
+        self.master_password_confirm_entry = None
+        self.first_master_setup = self.require_master_password and self.password_record is None
+        if self.require_master_password:
+            access = tk.LabelFrame(
+                self, text="MySQL IDLE access", bg="white", padx=10, pady=8
+            )
+            access.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+            row += 1
+
+            master_label = (
+                "Create master password" if self.first_master_setup else "Master password"
+            )
+            tk.Label(access, text=master_label, bg="white", anchor="e").grid(
+                row=0, column=0, sticky="e", padx=(0, 10), pady=4
+            )
+            self.master_password_var = tk.StringVar()
+            self.master_password_entry = ttk.Entry(
+                access, textvariable=self.master_password_var, width=30, show="*"
+            )
+            self.master_password_entry.grid(row=0, column=1, sticky="ew", pady=4)
+
+            visible = tk.BooleanVar(value=False)
+            ttk.Checkbutton(
+                access, text="Show", variable=visible,
+                command=lambda e=self.master_password_entry, v=visible: e.configure(
+                    show="" if v.get() else "*"
+                ),
+            ).grid(row=0, column=2, sticky="w", padx=(8, 0), pady=4)
+
+            if self.first_master_setup:
+                tk.Label(
+                    access,
+                    text=f"Use at least {MIN_MASTER_PASSWORD_LENGTH} characters. "
+                         "This password unlocks MySQL IDLE and is used for Android pairing; "
+                         "it is not your MySQL account password.",
+                    bg="white", fg="#475569", wraplength=420, justify=tk.LEFT,
+                ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 6))
+                tk.Label(access, text="Confirm master password", bg="white", anchor="e").grid(
+                    row=2, column=0, sticky="e", padx=(0, 10), pady=4
+                )
+                self.master_password_confirm_var = tk.StringVar()
+                self.master_password_confirm_entry = ttk.Entry(
+                    access, textvariable=self.master_password_confirm_var, width=30, show="*"
+                )
+                self.master_password_confirm_entry.grid(row=2, column=1, sticky="ew", pady=4)
+                confirm_visible = tk.BooleanVar(value=False)
+                ttk.Checkbutton(
+                    access, text="Show", variable=confirm_visible,
+                    command=lambda e=self.master_password_confirm_entry, v=confirm_visible:
+                        e.configure(show="" if v.get() else "*"),
+                ).grid(row=2, column=2, sticky="w", padx=(8, 0), pady=4)
+            else:
+                tk.Label(
+                    access,
+                    text="Verified locally before connecting. Your master password is not sent to MySQL.",
+                    bg="white", fg="#475569", wraplength=420, justify=tk.LEFT,
+                ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 0))
+            access.columnconfigure(1, weight=1)
+
+        tk.Label(
+            self, text="MySQL connection", bg="white", fg="#0b182a",
+            font=("Segoe UI", 10, "bold"),
+        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(0, 4))
+        row += 1
+
+        for offset, (label, key, secret) in enumerate(self.FIELDS):
+            grid_row = row + offset
             tk.Label(self, text=label, bg="white", anchor="e").grid(
-                row=row, column=0, sticky="e", padx=(0, 10), pady=4
+                row=grid_row, column=0, sticky="e", padx=(0, 10), pady=4
             )
             var = tk.StringVar(value=str(defaults.get(key, "")))
             entry = ttk.Entry(self, textvariable=var, width=30, show="*" if secret else "")
-            entry.grid(row=row, column=1, pady=4)
+            entry.grid(row=grid_row, column=1, pady=4)
             self.vars[key] = var
             entries[key] = entry
             if secret:
@@ -517,20 +626,20 @@ class ConnectDialog(tk.Toplevel):
                     command=lambda e=entry, v=visible: e.configure(
                         show="" if v.get() else "*"
                     ),
-                ).grid(row=row, column=2, sticky="w", padx=(8, 0), pady=4)
+                ).grid(row=grid_row, column=2, sticky="w", padx=(8, 0), pady=4)
             elif key == "ssl_ca":
                 ttk.Button(
                     self,
                     text="Browse…",
                     command=lambda v=var: self._browse_ca(v),
-                ).grid(row=row, column=2, sticky="w", padx=(8, 0), pady=4)
+                ).grid(row=grid_row, column=2, sticky="w", padx=(8, 0), pady=4)
 
         self.tls_verify = tk.BooleanVar(value=bool(defaults.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY)))
         ttk.Checkbutton(
             self,
             text="Verify MySQL server certificate (optional)",
             variable=self.tls_verify,
-        ).grid(row=len(self.FIELDS), column=0, columnspan=3, sticky="w", pady=(8, 2))
+        ).grid(row=row + len(self.FIELDS), column=0, columnspan=3, sticky="w", pady=(8, 2))
         tk.Label(
             self,
             text="Off by default for compatibility with local or self-signed certificates. Encryption is attempted when the server supports it, but its identity is not verified. Enable verification and provide a trusted CA to validate the server.",
@@ -539,21 +648,27 @@ class ConnectDialog(tk.Toplevel):
             anchor="w",
             justify=tk.LEFT,
             wraplength=390,
-        ).grid(row=len(self.FIELDS) + 1, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        ).grid(row=row + len(self.FIELDS) + 1, column=0, columnspan=3, sticky="w", pady=(0, 2))
 
         buttons = tk.Frame(self, bg="white")
-        buttons.grid(row=len(self.FIELDS) + 2, column=0, columnspan=3, sticky="e", pady=(12, 0))
+        buttons.grid(row=row + len(self.FIELDS) + 2, column=0, columnspan=3, sticky="e", pady=(12, 0))
         ttk.Button(buttons, text="Connect", command=self.on_ok).pack(side=tk.RIGHT)
         ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, padx=8)
 
         self.bind("<Return>", lambda e: self.on_ok())
         self.bind("<Escape>", lambda e: self.destroy())
-        entries["password" if defaults.get("user") else "user"].focus_set()
+        if self.require_master_password and self.master_password_entry is not None:
+            self.master_password_entry.focus_set()
+        else:
+            entries["password" if defaults.get("user") else "user"].focus_set()
 
+        self.columnconfigure(1, weight=1)
         self.update_idletasks()
         x = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
         y = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 3
         self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        if parent.winfo_viewable():
+            self.transient(parent)
         self.wait_visibility()
         self.grab_set()
         parent.wait_window(self)
@@ -568,6 +683,8 @@ class ConnectDialog(tk.Toplevel):
             variable.set(selected)
 
     def on_ok(self):
+        # Validate the non-secret connection fields before creating a master-password
+        # record, so a simple port typo cannot leave the first-run form half-configured.
         values = {k: (v.get() if k == "password" else v.get().strip()) for k, v in self.vars.items()}
         values["tls_verify"] = bool(self.tls_verify.get())
         values["host"] = values["host"] or "localhost"
@@ -576,8 +693,64 @@ class ConnectDialog(tk.Toplevel):
             if not 1 <= values["port"] <= 65535:
                 raise ValueError
         except ValueError:
-            messagebox.showerror("Invalid port", "Port must be an integer from 1 to 65535.", parent=self)
+            messagebox.showerror(
+                "Invalid port", "Port must be an integer from 1 to 65535.", parent=self
+            )
             return
+
+        if self.require_master_password:
+            master_password = self.master_password_var.get()
+            if self.password_record is None:
+                if not MIN_MASTER_PASSWORD_LENGTH <= len(master_password) <= 1024:
+                    messagebox.showerror(
+                        "Invalid master password",
+                        f"Use between {MIN_MASTER_PASSWORD_LENGTH} and 1024 characters.",
+                        parent=self,
+                    )
+                    self.master_password_entry.focus_set()
+                    return
+                confirmation = self.master_password_confirm_var.get()
+                if master_password != confirmation:
+                    messagebox.showerror(
+                        "Passwords do not match",
+                        "Enter the same master password in both master-password fields.",
+                        parent=self,
+                    )
+                    self.master_password_confirm_entry.focus_set()
+                    return
+                try:
+                    self.password_record = save_password_record(
+                        MASTER_PASSWORD_PATH, master_password
+                    )
+                except (OSError, ValueError) as exc:
+                    logging.exception("Could not save the MySQL IDLE master-password verifier")
+                    messagebox.showerror(
+                        "Could not save master password",
+                        "MySQL IDLE cannot connect without saving the master-password verifier.\n\n"
+                        + str(exc),
+                        parent=self,
+                    )
+                    return
+            elif not verify_password(master_password, self.password_record):
+                self.master_attempts += 1
+                remaining = 5 - self.master_attempts
+                if remaining > 0:
+                    messagebox.showerror(
+                        "Incorrect master password",
+                        f"The password did not match. {remaining} attempt(s) remain for this launch.",
+                        parent=self,
+                    )
+                    self.master_password_entry.focus_set()
+                else:
+                    messagebox.showerror(
+                        "Access denied",
+                        "MySQL IDLE will close after five incorrect master-password attempts.",
+                        parent=self,
+                    )
+                    self.destroy()
+                return
+            self.master_authenticated = True
+
         self.result = values
         self.destroy()
 
@@ -1036,6 +1209,8 @@ class MySQLIDLE:
         self.events = queue.Queue()
         self.worker = DatabaseWorker(self.events, self.governor)
         self.connected = False
+        self.master_authenticated = False
+        self.startup_connect_pending = True
         self.conn_info = {}
         self.current_db = None
         self.identifiers = set()      # database / table / column names for Tab completion
@@ -1072,7 +1247,6 @@ class MySQLIDLE:
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         root.report_callback_exception = self.report_callback_exception
         root.after(50, self._poll_worker_events)
-        root.after(250, self.connect_dialog)
 
     # ----------------------------------------------------------------- UI --
 
@@ -1628,10 +1802,23 @@ class MySQLIDLE:
             "database": "", "ssl_ca": "", "tls_verify": DEFAULT_MYSQL_TLS_VERIFY,
         }
         defaults.update(self.cfg.get("last_connection", {}))
-        dialog = ConnectDialog(self.root, defaults)
+        initial_page = self.startup_connect_pending
+        dialog = ConnectDialog(
+            self.root, defaults, require_master_password=initial_page
+        )
+        if dialog.master_authenticated:
+            self.master_authenticated = True
         if dialog.result:
+            self.startup_connect_pending = False
+            self.root.deiconify()
             self.connect(**dialog.result)
-        self.text.focus_set()
+            self.text.focus_set()
+        elif initial_page:
+            # Canceling the initial page closes the hidden shell, even if the master
+            # password was verified but the user chose not to connect.
+            self.on_close()
+        else:
+            self.text.focus_set()
 
     def connect(self, host, port, user, password, database, ssl_ca="", tls_verify=DEFAULT_MYSQL_TLS_VERIFY):
         self._queue_job("connect", {
@@ -2086,106 +2273,6 @@ class MySQLIDLE:
         self.root.destroy()
 
 
-def _authenticate_startup(root):
-    """Set the master password on first launch, then require it at each launch."""
-    root.withdraw()
-    _apply_window_icon(root)
-    try:
-        record = load_password_record(MASTER_PASSWORD_PATH)
-    except (OSError, ValueError) as exc:
-        logging.exception("Could not load the MySQL IDLE master-password verifier")
-        messagebox.showerror(
-            "Master password unavailable",
-            "The MySQL IDLE master-password record could not be read. Startup is blocked "
-            "rather than resetting authentication automatically.\n\n" + str(exc),
-            parent=root,
-        )
-        return False
-
-    if record is None:
-        while True:
-            password = simpledialog.askstring(
-                "Set MySQL IDLE master password",
-                "Create a master password with at least "
-                + str(MIN_MASTER_PASSWORD_LENGTH)
-                + " characters.\n\nThis is separate from your MySQL database password. "
-                "You will enter it each time you start MySQL IDLE on Windows, and the same "
-                "password is required when pairing Android.",
-                show="*",
-                parent=root,
-            )
-            if password is None:
-                return False
-            if len(password) < MIN_MASTER_PASSWORD_LENGTH or len(password) > 1024:
-                messagebox.showerror(
-                    "Invalid master password",
-                    "Use between " + str(MIN_MASTER_PASSWORD_LENGTH) + " and 1024 characters.",
-                    parent=root,
-                )
-                continue
-            confirmation = simpledialog.askstring(
-                "Confirm master password",
-                "Enter the same master password again:",
-                show="*",
-                parent=root,
-            )
-            if confirmation is None:
-                return False
-            if password != confirmation:
-                messagebox.showerror(
-                    "Passwords do not match",
-                    "The two passwords were different. Please set the master password again.",
-                    parent=root,
-                )
-                continue
-            try:
-                save_password_record(MASTER_PASSWORD_PATH, password)
-            except (OSError, ValueError) as exc:
-                logging.exception("Could not save the MySQL IDLE master-password verifier")
-                messagebox.showerror(
-                    "Could not save master password",
-                    "MySQL IDLE cannot start without saving its master-password verifier.\n\n"
-                    + str(exc),
-                    parent=root,
-                )
-                return False
-            messagebox.showinfo(
-                "Master password configured",
-                "Your master password is set. Use this exact password whenever you unlock "
-                "MySQL IDLE on Windows and whenever Android pairs with this desktop.\n\n"
-                "The password itself is not saved; only a salted verifier is stored.",
-                parent=root,
-            )
-            return True
-
-    for attempt in range(5):
-        entered = simpledialog.askstring(
-            "Unlock MySQL IDLE",
-            "Enter your MySQL IDLE master password to continue:",
-            show="*",
-            parent=root,
-        )
-        if entered is None:
-            return False
-        if verify_password(entered, record):
-            return True
-        remaining = 4 - attempt
-        if remaining:
-            messagebox.showerror(
-                "Incorrect master password",
-                "The password did not match. "
-                + str(remaining)
-                + " attempt(s) remain for this launch.",
-                parent=root,
-            )
-    messagebox.showerror(
-        "Access denied",
-        "MySQL IDLE will close after five incorrect master-password attempts.",
-        parent=root,
-    )
-    return False
-
-
 def _show_startup_error(title, message):
     try:
         import tkinter.messagebox as tk_messagebox
@@ -2225,11 +2312,10 @@ def main():
         root = tk.Tk()
         root.withdraw()
         _apply_window_icon(root)
-        if not _authenticate_startup(root):
-            root.destroy()
-            return
-        MySQLIDLE(root)
-        root.deiconify()
+        app = MySQLIDLE(root)
+        # Keep the shell hidden until the single Connect to MySQL page completes
+        # its local master-password check and database connection form.
+        root.after_idle(app.connect_dialog)
         root.mainloop()
     except Exception as exc:
         logging.exception("Fatal application startup/runtime error")
