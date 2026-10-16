@@ -253,7 +253,7 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn("@drawable/ic_mysqlidle_logo", foreground)
         main_activity = (ROOT / "android-app/app/src/main/java/com/mysqlidle/mobile/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("R.drawable.ic_mysqlidle_logo", main_activity)
-        self.assertIn('contentDescription = "MySQL IDLE logo"', main_activity)
+        self.assertIn('contentDescription = "MySQL Editor logo"', main_activity)
         styles = (ROOT / "android-app/app/src/main/res/values/styles.xml").read_text(encoding="utf-8")
         self.assertIn("@drawable/ic_launcher_foreground", styles)
 
