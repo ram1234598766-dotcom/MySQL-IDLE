@@ -567,25 +567,37 @@ class ConnectDialog(tk.Toplevel):
                 self.destroy()
                 return
 
-        # Keep the app's exact logo visible on the one connection page.
-        header = tk.Frame(self, bg="white")
-        header.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        # Use the original logo at native 96x96 size in a clean branded header.
+        header = tk.Frame(self, bg="#0B182A", padx=12, pady=10)
+        header.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 14))
         logo_path = _resource_path(Path("assets") / "mysqlidle-logo.png")
         self.logo_source_image = None
         self.logo_image = None
         if logo_path.is_file():
             try:
-                # Display the original 96x96 logo unchanged; keep the PhotoImage alive.
                 self.logo_source_image = tk.PhotoImage(file=str(logo_path))
                 self.logo_image = self.logo_source_image
-                tk.Label(header, image=self.logo_image, bg="white").pack(side=tk.LEFT, padx=(0, 12))
-            except tk.TclError:
+                tk.Label(
+                    header, image=self.logo_image, bg="#0B182A", bd=0,
+                    highlightthickness=0,
+                ).pack(side=tk.LEFT, padx=(0, 14))
+            except (tk.TclError, OSError):
                 self.logo_image = None
                 self.logo_source_image = None
+
+        header_copy = tk.Frame(header, bg="#0B182A", bd=0, highlightthickness=0)
+        header_copy.pack(side=tk.LEFT, fill=tk.Y, expand=True, pady=(14, 0))
         tk.Label(
-            header, text="Connect to MySQL", bg="white", fg="#0b182a",
-            font=("Segoe UI", 15, "bold"),
-        ).pack(side=tk.LEFT, anchor="center")
+            header_copy, text="Connect to MySQL", bg="#0B182A", fg="#FFFFFF",
+            font=("Segoe UI", 16, "bold"), anchor="w",
+        ).pack(anchor="w")
+        tk.Label(
+            header_copy, text="MySQL IDLE desktop workspace", bg="#0B182A",
+            fg="#B9C8DD", font=("Segoe UI", 10), anchor="w",
+        ).pack(anchor="w", pady=(5, 0))
+        tk.Frame(self, bg="#DCE5F1", height=1, bd=0).grid(
+            row=1, column=0, columnspan=3, sticky="ew", pady=(0, 12)
+        )
 
         row = 1
         self.master_password_entry = None
@@ -595,7 +607,7 @@ class ConnectDialog(tk.Toplevel):
             access = tk.LabelFrame(
                 self, text="MySQL IDLE access", bg="white", padx=10, pady=8
             )
-            access.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+            access.grid(row=row+1, column=0, columnspan=3, sticky="ew", pady=(0, 10))
             row += 1
 
             master_label = (
