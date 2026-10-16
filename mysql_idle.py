@@ -650,7 +650,7 @@ class ConnectDialog(tk.Toplevel):
                 ).grid(row=1, column=2, sticky="w", padx=(8, 0), pady=4)
                 tk.Label(
                     access,
-                    text=f"Use at least {MIN_MASTER_PASSWORD_LENGTH} characters. Re-enter the same password above/below to confirm it. This is not your MySQL account password.",
+                    text=f"Use at least {MIN_MASTER_PASSWORD_LENGTH} characters. Type it again in the confirmation field. This is not your MySQL account password.",
                     bg="white", fg="#475569", wraplength=390, justify=tk.LEFT,
                 ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 2))
             else:
@@ -1329,6 +1329,9 @@ class MySQLIDLE:
         self.connected = False
         self.master_authenticated = False
         self.startup_connect_pending = True
+        self._startup_reveal_pending = False
+        self._startup_retry_defaults = None
+        self._pending_startup_connect_error = None
         self.conn_info = {}
         self.current_db = None
         self.identifiers = set()      # database / table / column names for Tab completion
@@ -1915,7 +1918,10 @@ class MySQLIDLE:
                 kind = event[0]
                 if kind == "output":
                     message, tag = event[1], event[2]
-                    self.with_output(lambda message=message, tag=tag: self.write(message, tag))
+                    if self._startup_reveal_pending and tag == "error":
+                        self._pending_startup_connect_error = message
+                    else:
+                        self.with_output(lambda message=message, tag=tag: self.write(message, tag))
                 elif kind == "result":
                     columns, preview, row_count, elapsed, path = event[1:]
                     previous = self.last_result
@@ -1934,6 +1940,13 @@ class MySQLIDLE:
                     self.conn_info = info
                     self.current_db = current_db
                     self.identifiers = identifiers
+                    if connected and self._startup_reveal_pending:
+                        self._startup_reveal_pending = False
+                        self._pending_startup_connect_error = None
+                        self._startup_retry_defaults = None
+                        self.root.deiconify()
+                        self.root.lift()
+                        self.text.focus_set()
                     if connected:
                         saved = {
                             "host": info.get("host", "localhost"),
@@ -1956,6 +1969,12 @@ class MySQLIDLE:
                         self.hint_var.set("")
                     else:
                         self.hint_var.set(f"{self.busy_count} tasks queued")
+                    if (
+                        self.busy_count == 0
+                        and self._startup_reveal_pending
+                        and self._pending_startup_connect_error
+                    ):
+                        self.root.after_idle(self._handle_startup_connection_failure)
         except queue.Empty:
             pass
         finally:
@@ -1964,26 +1983,63 @@ class MySQLIDLE:
 
     # ------------------------------------------------------------ connection --
 
-    def connect_dialog(self):
+    def _handle_startup_connection_failure(self):
+        """Keep startup on the compact connect dialog when a database connection fails."""
+        if (
+            self._closing
+            or not self._startup_reveal_pending
+            or self.connected
+            or not self._pending_startup_connect_error
+        ):
+            return
+        error_message = self._pending_startup_connect_error.strip()
+        retry_defaults = dict(self._startup_retry_defaults or {})
+        self._pending_startup_connect_error = None
+        self._startup_reveal_pending = False
+        messagebox.showerror(
+            "Could not connect to MySQL",
+            error_message or "The connection failed. Check the server details and try again.",
+            parent=self.root,
+        )
+        if not self._closing:
+            self.root.after_idle(
+                lambda defaults=retry_defaults: self.connect_dialog(defaults_override=defaults)
+            )
+
+    def connect_dialog(self, defaults_override=None):
         defaults = {
             "host": "localhost", "port": "3306", "user": "root", "password": "",
             "database": "", "ssl_ca": "", "tls_verify": DEFAULT_MYSQL_TLS_VERIFY,
         }
         defaults.update(self.cfg.get("last_connection", {}))
+        if defaults_override:
+            defaults.update(defaults_override)
+
         initial_page = self.startup_connect_pending
+        shell_was_hidden = not self.root.winfo_viewable()
         dialog = ConnectDialog(
             self.root, defaults, require_master_password=initial_page
         )
         if dialog.master_authenticated:
             self.master_authenticated = True
         if dialog.result:
-            self.startup_connect_pending = False
-            self.root.deiconify()
+            # Master-password setup/verification occurs on this compact page. The
+            # large SQL workspace stays withdrawn until the database server accepts
+            # the connection, not merely until the form is submitted.
+            if initial_page and dialog.master_authenticated:
+                self.startup_connect_pending = False
+            self._pending_startup_connect_error = None
+            if shell_was_hidden:
+                self._startup_retry_defaults = dict(dialog.result)
+                self._startup_reveal_pending = True
+            else:
+                self._startup_retry_defaults = None
+                self._startup_reveal_pending = False
             self.connect(**dialog.result)
-            self.text.focus_set()
-        elif initial_page:
-            # Canceling the initial page closes the hidden shell, even if the master
-            # password was verified but the user chose not to connect.
+            if not shell_was_hidden:
+                self.text.focus_set()
+        elif initial_page or shell_was_hidden:
+            # Canceling startup must not leave a hidden, still-running app process.
             self.on_close()
         else:
             self.text.focus_set()
