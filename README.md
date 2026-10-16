@@ -112,7 +112,8 @@ The APK is signed and the release workflow checks its signature, target API, per
 1. Download `MySQLIDLE-Setup.exe` from the [latest successful GitHub release](https://github.com/ram1234598766-dotcom/MySQL-IDLE/releases).
 2. Run the installer. The default installation is under your Windows user's local application-data programs directory and is designed for per-user installation.
 3. Use the Start Menu or desktop shortcut to launch **MySQL IDLE**. The branded **Connect to MySQL** page opens automatically.
-4. On first launch, create and confirm the master password in that same page, then fill in the MySQL/MariaDB connection fields and select **Connect**. On later launches, enter the existing master password in the same form; there is no separate unlock window.
+4. On first launch, create a master password and re-enter the same password in the confirmation field immediately below it. Then fill in the MySQL/MariaDB connection fields and select **Connect**.
+5. On later launches, only the compact **Connect to MySQL** dialog appears initially. Enter the master password there and select **Connect**; the large SQL workspace stays hidden until the database server accepts the connection. If the connection fails, the compact dialog reopens with the connection details so you can correct them without exposing the workspace. There is no separate unlock window.
 
 Alternative packages:
 
@@ -156,8 +157,9 @@ Tkinter normally comes with the standard Windows Python installer. If your Pytho
 
 MySQL IDLE opens the **Connect to MySQL** window first. The master-password controls are inside this same window, so there is no separate startup sign-in dialog.
 
-- **First launch:** create a master password of at least 10 characters and confirm it in the Connect to MySQL window.
-- **Later launches:** enter that master password in the **MySQL IDLE master password** field in the same window. The app verifies it locally before attempting the database connection.
+- **First launch:** create a master password of at least 10 characters, then enter the same password again in the confirmation field directly below it.
+- **Later launches:** the compact **Connect to MySQL** dialog is the only window shown at startup. Enter the saved master password; the main SQL workspace remains hidden until the database connection succeeds.
+- **Connection failure:** the compact dialog returns with the connection fields prefilled so you can fix the host, account password, port, or optional TLS settings and retry.
 - The master password is used to unlock MySQL IDLE and to authenticate Android pairing. Only a salted PBKDF2-HMAC-SHA256 verifier is stored, not the password itself.
 - The **MySQL account password** field is separate: it must contain the password configured for the MySQL/MariaDB user. The master password is not sent to MySQL as a database credential.
 
