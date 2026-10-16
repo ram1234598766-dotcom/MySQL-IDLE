@@ -139,6 +139,44 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
         self.assertIn("Use the generated multi-size ICO where supported, avoiding DPI-induced blur.", desktop)
 
+    def test_compact_connect_dialog_confirms_password_below_and_hides_advanced_tls(self):
+        desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
+        create_password = desktop.index("self.master_password_entry.grid(row=0, column=1")
+        confirm_label = desktop.index('tk.Label(access, text="Confirm master password"')
+        confirm_entry = desktop.index("self.master_password_confirm_entry.grid(row=1, column=1")
+        helper_text = desktop.index("Use at least {MIN_MASTER_PASSWORD_LENGTH}")
+        self.assertLess(create_password, confirm_label)
+        self.assertLess(confirm_label, confirm_entry)
+        self.assertLess(confirm_entry, helper_text)
+        self.assertIn("confirmation = self.master_password_confirm_var.get()", desktop)
+        self.assertIn("if master_password != confirmation:", desktop)
+
+        self.assertNotIn('("MySQL CA certificate (optional)", "ssl_ca", False)', desktop)
+        self.assertIn('self.vars["ssl_ca"] = tk.StringVar(value=str(defaults.get("ssl_ca", "")))', desktop)
+        self.assertIn("def _toggle_advanced_tls(self):", desktop)
+        self.assertIn("self.advanced_tls_frame.grid_remove()", desktop)
+        self.assertIn('text="Connect to MySQL"', desktop)
+
+    def test_startup_keeps_sql_workspace_hidden_until_database_connection_succeeds(self):
+        desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
+        flow_start = desktop.index("    def _handle_startup_connection_failure(self):")
+        flow_end = desktop.index("    def connect(self,", flow_start)
+        connect_flow = desktop[flow_start:flow_end]
+        poll_start = desktop.index("    def _poll_worker_events(self):")
+        connect_state = desktop.index('                elif kind == "connection_state":', poll_start)
+        poll_end = desktop.index("    # ------------------------------------------------------------ connection --", connect_state)
+        poll = desktop[poll_start:poll_end]
+
+        self.assertIn("self.root.withdraw()", desktop[desktop.index("def main():"):])
+        self.assertIn("if connected and self._startup_reveal_pending:", poll)
+        self.assertIn("self.root.deiconify()", poll)
+        self.assertIn("self._pending_startup_connect_error = message", poll)
+        self.assertIn("self.root.after_idle(self._handle_startup_connection_failure)", poll)
+        self.assertIn("self.connect_dialog(defaults_override=defaults)", connect_flow)
+        self.assertIn("self._startup_reveal_pending = True", connect_flow)
+        self.assertNotIn("self.root.deiconify()", connect_flow)
+        self.assertIn("if initial_page or shell_was_hidden:", connect_flow)
+
     def test_windows_startup_requires_master_password_and_android_uses_same_verifier(self):
         desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
         companion = (ROOT / "mobile_companion.py").read_text(encoding="utf-8")
