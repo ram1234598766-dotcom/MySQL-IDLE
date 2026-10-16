@@ -54,8 +54,11 @@ def _wizard_image() -> Image.Image:
 
 
 def _wizard_small() -> Image.Image:
-    """Create the installer-required 55x55 version using nearest-neighbor only."""
-    return _contained_logo(55, 55).convert("RGB")
+    """Fit the original logo to the installer-required 55x55 slot using nearest-neighbor."""
+    image = Image.new("RGB", (55, 55), NAVY)
+    logo = _contained_logo(55, 55)
+    image.paste(logo, (0, 0), logo)
+    return image
 
 
 def main() -> None:
