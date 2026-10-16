@@ -15,7 +15,7 @@ class PackagingBrandingTests(unittest.TestCase):
                 self.assertIn("icon='assets/mysqlidle.ico'", source)
 
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
-        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo-reference.webp"', generator)
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
         self.assertTrue((ROOT / "assets" / "mysqlidle-logo.png").is_file())
 
     def test_google_play_assets_have_required_sizes(self):
@@ -28,12 +28,15 @@ class PackagingBrandingTests(unittest.TestCase):
             "phone-03-mysql-connection-1080x1920.png": (1080, 1920),
             "phone-04-sql-editor-and-results-1080x1920.png": (1080, 1920),
         }
-        source_path = ROOT / "assets" / "mysqlidle-logo-reference.webp"
+        source_path = ROOT / "assets" / "mysqlidle-logo.png"
         with Image.open(source_path) as source_image:
             source = source_image.convert("RGBA")
+        feature_graphic = Image.new("RGBA", (1024, 500), (11, 16, 32, 255))
+        feature_logo = source.resize((500, 500), Image.Resampling.NEAREST)
+        feature_graphic.alpha_composite(feature_logo, ((1024 - 500) // 2, 0))
         exact_outputs = {
-            "app-icon-512.png": source.resize((512, 512), Image.Resampling.LANCZOS),
-            "feature-graphic-1024x500.png": source.resize((1024, 500), Image.Resampling.LANCZOS),
+            "app-icon-512.png": source.resize((512, 512), Image.Resampling.NEAREST),
+            "feature-graphic-1024x500.png": feature_graphic,
         }
         for name, size in expected.items():
             path = out / name
@@ -87,18 +90,18 @@ class PackagingBrandingTests(unittest.TestCase):
     def test_setup_wizard_artwork_uses_the_same_logo_without_redesign(self):
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
         installer = (ROOT / "MySQLIDLE.iss").read_text(encoding="utf-8")
-        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo-reference.webp"', generator)
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
         self.assertIn("SetupIconFile=assets\\mysqlidle.ico", installer)
         self.assertIn("WizardImageFile=assets\\wizard-image.bmp", installer)
         self.assertIn("WizardSmallImageFile=assets\\wizard-small.bmp", installer)
-        self.assertIn("UninstallDisplayIcon={app}\\\\_internal\\\\assets\\mysqlidle.ico", installer)
+        self.assertIn(r"UninstallDisplayIcon={app}\_internal\assets\mysqlidle.ico", installer)
         self.assertNotIn("_centered_text", generator)
         self.assertNotIn("SQL WORKSPACE", generator)
         self.assertNotIn("QUERY", generator)
         self.assertNotIn("BROWSE", generator)
         self.assertNotIn("EXPORT", generator)
 
-        source_path = ROOT / "assets" / "mysqlidle-logo-reference.webp"
+        source_path = ROOT / "assets" / "mysqlidle-logo.png"
         with Image.open(source_path) as source_image:
             source = source_image.convert("RGBA")
 
@@ -106,7 +109,7 @@ class PackagingBrandingTests(unittest.TestCase):
         with Image.open(ROOT / "assets" / "wizard-image.bmp") as actual_panel:
             self.assertEqual(actual_panel.size, (164, 314))
             mark = source.copy()
-            mark.thumbnail((154, 154), Image.Resampling.LANCZOS)
+            mark = mark.resize((154, 154), Image.Resampling.NEAREST)
             expected_panel = Image.new("RGB", (164, 314), (11, 24, 42))
             expected_panel.paste(mark, ((164 - mark.width) // 2, (314 - mark.height) // 2), mark)
             self.assertEqual(list(actual_panel.convert("RGB").getdata()), list(expected_panel.getdata()),
@@ -116,7 +119,7 @@ class PackagingBrandingTests(unittest.TestCase):
         with Image.open(ROOT / "assets" / "wizard-small.bmp") as actual_small:
             self.assertEqual(actual_small.size, (55, 55))
             mark = source.copy()
-            mark.thumbnail((51, 51), Image.Resampling.LANCZOS)
+            mark = mark.resize((51, 51), Image.Resampling.NEAREST)
             expected_small = Image.new("RGB", (55, 55), (248, 250, 252))
             expected_small.paste(mark, ((55 - mark.width) // 2, (55 - mark.height) // 2), mark)
             self.assertEqual(list(actual_small.convert("RGB").getdata()), list(expected_small.getdata()),
@@ -126,7 +129,12 @@ class PackagingBrandingTests(unittest.TestCase):
         desktop = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
         companion = (ROOT / "mobile_companion.py").read_text(encoding="utf-8")
         self.assertIn('MASTER_PASSWORD_PATH = APP_DATA_DIR / "master_password.json"', desktop)
-        self.assertIn("if not _authenticate_startup(root):", desktop)
+        self.assertNotIn("_authenticate_startup", desktop)
+        self.assertIn("require_master_password=initial_page", desktop)
+        self.assertIn("self.password_record = load_password_record(MASTER_PASSWORD_PATH)", desktop)
+        self.assertIn("verify_password(master_password, self.password_record)", desktop)
+        self.assertIn("Create master password", desktop)
+        self.assertIn("MySQL account password", desktop)
         self.assertIn("password_record=password_record", desktop)
         self.assertIn("from password_auth import is_password_record, verify_password", companion)
         self.assertIn('master_password = data.get("masterPassword", "")', companion)
@@ -141,26 +149,27 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
         self.assertNotIn("Tasks: desktopicon", source)
 
-    def test_readme_logo_is_embedded_at_native_resolution_in_android(self):
+    def test_readme_logo_is_the_shared_source_for_windows_android_and_store_assets(self):
         generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
-        logo = ROOT / "assets" / "mysqlidle-logo-reference.webp"
+        logo = ROOT / "assets" / "mysqlidle-logo.png"
         android_logo = ROOT / "android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
-        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo-reference.webp"', generator)
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
         play_generator = (ROOT / "tools" / "generate_play_store_assets.py").read_text(encoding="utf-8")
-        self.assertIn('root/"assets"/"mysqlidle-logo-reference.webp"', play_generator)
-        self.assertIn("with Image.open(src) as source_logo", play_generator)
-        self.assertNotIn("mysqlidle-logo-highres.png", generator)
-        self.assertNotIn("mysqlidle-logo-highres.png", play_generator)
+        self.assertIn('root/"assets"/"mysqlidle-logo.png"', play_generator)
+        self.assertIn("Image.Resampling.NEAREST", play_generator)
+        self.assertNotIn("mysqlidle-logo-reference.webp", generator)
+        self.assertNotIn("mysqlidle-logo-reference.webp", play_generator)
         self.assertTrue(logo.is_file())
         self.assertTrue(android_logo.is_file())
         with Image.open(logo) as source_image:
             source = source_image.convert("RGBA")
-            self.assertGreater(source_image.width, 96, "README must use the high-resolution source, not the old 96px thumbnail.")
-            self.assertEqual(source_image.format, "WEBP")
+            self.assertEqual(source_image.format, "PNG")
+            self.assertEqual(source_image.size, (96, 96))
+        expected = source.resize((512, 512), Image.Resampling.NEAREST)
         with Image.open(android_logo) as image:
-            self.assertEqual(image.size, source.size)
-            self.assertEqual(list(image.convert("RGBA").getdata()), list(source.getdata()),
-                             "Android drawable pixels must match the README logo source at native resolution.")
+            self.assertEqual(image.size, (512, 512))
+            self.assertEqual(list(image.convert("RGBA").getdata()), list(expected.getdata()),
+                             "Android drawable must use the exact README logo, upscaled without blur.")
 
     def test_android_launcher_and_splash_use_the_supplied_logo(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
