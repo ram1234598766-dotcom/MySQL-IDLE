@@ -79,18 +79,20 @@ def _resource_path(relative_path):
 
 
 def _apply_window_icon(window):
-    """Use the shared product icon and source PNG for crisp native-window branding."""
+    """Use the generated multi-size ICO where supported, avoiding DPI-induced blur."""
     icon_path = _resource_path(Path("assets") / "mysqlidle.ico")
     logo_path = _resource_path(Path("assets") / "mysqlidle-logo.png")
+    icon_set = False
     if icon_path.is_file():
         try:
             window.iconbitmap(default=str(icon_path))
+            icon_set = True
         except (tk.TclError, OSError):
             # Some Tk builds do not support ICO title-bar images.
             pass
-    if logo_path.is_file():
+    if not icon_set and logo_path.is_file():
         try:
-            # Use the original PNG as the high-resolution Tk window icon as well.
+            # PNG is a fallback for platforms that cannot use the Windows ICO.
             # Keep a strong reference so Tk does not garbage-collect the icon.
             window._mysqlidle_icon_photo = tk.PhotoImage(file=str(logo_path))
             window.iconphoto(True, window._mysqlidle_icon_photo)
