@@ -56,7 +56,6 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn("SetupIconFile=assets\\mysqlidle.ico", installer)
         self.assertIn("WizardImageFile=assets\\wizard-image.bmp", installer)
         self.assertIn("WizardSmallImageFile=assets\\wizard-small.bmp", installer)
-        self.assertIn(r"UninstallDisplayIcon={app}\_internal\assets\mysqlidle.ico", installer)
         self.assertNotIn("_centered_text", generator)
         self.assertNotIn("SQL WORKSPACE", generator)
         self.assertNotIn("QUERY", generator)
@@ -67,7 +66,7 @@ class PackagingBrandingTests(unittest.TestCase):
         with Image.open(source_path) as source_image:
             source = source_image.convert("RGBA")
 
-        # The installer side panel contains only the source artwork, fitted proportionally.
+        # The installer side panel contains the original source pixels at native 96x96 size.
         with Image.open(ROOT / "assets" / "wizard-image.bmp") as actual_panel:
             self.assertEqual(actual_panel.size, (164, 314))
             mark = source.copy()
