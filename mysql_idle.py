@@ -599,7 +599,7 @@ class ConnectDialog(tk.Toplevel):
             row=1, column=0, columnspan=3, sticky="ew", pady=(0, 12)
         )
 
-        row = 1
+        row = 2
         self.master_password_entry = None
         self.master_password_confirm_entry = None
         self.first_master_setup = self.require_master_password and self.password_record is None
@@ -607,7 +607,7 @@ class ConnectDialog(tk.Toplevel):
             access = tk.LabelFrame(
                 self, text="MySQL IDLE access", bg="white", padx=10, pady=8
             )
-            access.grid(row=row+1, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+            access.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(0, 10))
             row += 1
 
             master_label = (
