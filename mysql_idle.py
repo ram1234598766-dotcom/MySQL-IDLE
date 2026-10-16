@@ -527,17 +527,18 @@ def runtime_diagnostics():
 # --------------------------------------------------------------------------
 
 class ConnectDialog(tk.Toplevel):
+    # Keep the everyday connection form compact. Optional certificate controls live
+    # under the collapsed "Advanced connection security" section.
     FIELDS = [
         ("Host", "host", False),
         ("Port", "port", False),
         ("User", "user", False),
         ("MySQL account password", "password", True),
         ("Database (optional)", "database", False),
-        ("MySQL CA certificate (optional)", "ssl_ca", False),
     ]
 
     def __init__(self, parent, defaults, require_master_password=False):
-        super().__init__(parent, bg="white", padx=16, pady=14)
+        super().__init__(parent, bg="white", padx=12, pady=10)
         self.title("Connect to MySQL")
         _apply_window_icon(self)
         self.resizable(False, False)
@@ -569,7 +570,7 @@ class ConnectDialog(tk.Toplevel):
 
         # Use the original logo at native 96x96 size in a clean branded header.
         header = tk.Frame(self, bg="#0B182A", padx=12, pady=10)
-        header.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 14))
+        header.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 8))
         logo_path = _resource_path(Path("assets") / "mysqlidle-logo.png")
         self.logo_source_image = None
         self.logo_image = None
@@ -586,7 +587,7 @@ class ConnectDialog(tk.Toplevel):
                 self.logo_source_image = None
 
         header_copy = tk.Frame(header, bg="#0B182A", bd=0, highlightthickness=0)
-        header_copy.pack(side=tk.LEFT, fill=tk.Y, expand=True, pady=(14, 0))
+        header_copy.pack(side=tk.LEFT, fill=tk.Y, expand=True, pady=(12, 0))
         tk.Label(
             header_copy, text="Connect to MySQL", bg="#0B182A", fg="#FFFFFF",
             font=("Segoe UI", 16, "bold"), anchor="w",
@@ -631,32 +632,32 @@ class ConnectDialog(tk.Toplevel):
             ).grid(row=0, column=2, sticky="w", padx=(8, 0), pady=4)
 
             if self.first_master_setup:
-                tk.Label(
-                    access,
-                    text=f"Use at least {MIN_MASTER_PASSWORD_LENGTH} characters. "
-                         "This password unlocks MySQL IDLE and is used for Android pairing; "
-                         "it is not your MySQL account password.",
-                    bg="white", fg="#475569", wraplength=420, justify=tk.LEFT,
-                ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 6))
+                # Place confirmation immediately below the first entry so the
+                # two-password setup reads as one clear, sequential step.
                 tk.Label(access, text="Confirm master password", bg="white", anchor="e").grid(
-                    row=2, column=0, sticky="e", padx=(0, 10), pady=4
+                    row=1, column=0, sticky="e", padx=(0, 10), pady=4
                 )
                 self.master_password_confirm_var = tk.StringVar()
                 self.master_password_confirm_entry = ttk.Entry(
-                    access, textvariable=self.master_password_confirm_var, width=30, show="*"
+                    access, textvariable=self.master_password_confirm_var, width=26, show="*"
                 )
-                self.master_password_confirm_entry.grid(row=2, column=1, sticky="ew", pady=4)
+                self.master_password_confirm_entry.grid(row=1, column=1, sticky="ew", pady=4)
                 confirm_visible = tk.BooleanVar(value=False)
                 ttk.Checkbutton(
                     access, text="Show", variable=confirm_visible,
                     command=lambda e=self.master_password_confirm_entry, v=confirm_visible:
                         e.configure(show="" if v.get() else "*"),
-                ).grid(row=2, column=2, sticky="w", padx=(8, 0), pady=4)
+                ).grid(row=1, column=2, sticky="w", padx=(8, 0), pady=4)
+                tk.Label(
+                    access,
+                    text=f"Use at least {MIN_MASTER_PASSWORD_LENGTH} characters. Re-enter the same password above/below to confirm it. This is not your MySQL account password.",
+                    bg="white", fg="#475569", wraplength=390, justify=tk.LEFT,
+                ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 2))
             else:
                 tk.Label(
                     access,
-                    text="Verified locally before connecting. Your master password is not sent to MySQL.",
-                    bg="white", fg="#475569", wraplength=420, justify=tk.LEFT,
+                    text="Enter the master password to unlock this app. It is verified locally and is not sent to MySQL.",
+                    bg="white", fg="#475569", wraplength=390, justify=tk.LEFT,
                 ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(2, 0))
             access.columnconfigure(1, weight=1)
 
@@ -693,26 +694,58 @@ class ConnectDialog(tk.Toplevel):
                     command=lambda v=var: self._browse_ca(v),
                 ).grid(row=grid_row, column=2, sticky="w", padx=(8, 0), pady=4)
 
-        self.tls_verify = tk.BooleanVar(value=bool(defaults.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY)))
-        ttk.Checkbutton(
-            self,
-            text="Verify MySQL server certificate (optional)",
-            variable=self.tls_verify,
-        ).grid(row=row + len(self.FIELDS), column=0, columnspan=3, sticky="w", pady=(8, 2))
+        # Optional CA/TLS controls are folded away for a smaller startup dialog.
+        self.vars["ssl_ca"] = tk.StringVar(value=str(defaults.get("ssl_ca", "")))
+        self.tls_verify = tk.BooleanVar(
+            value=bool(defaults.get("tls_verify", DEFAULT_MYSQL_TLS_VERIFY))
+        )
+        self.advanced_open = bool(self.tls_verify.get() or self.vars["ssl_ca"].get().strip())
+        self.advanced_caption = tk.StringVar()
+        self.advanced_toggle = ttk.Button(
+            self, textvariable=self.advanced_caption, command=self._toggle_advanced_tls
+        )
+        self.advanced_toggle_row = row + len(self.FIELDS)
+        self.advanced_toggle.grid(
+            row=self.advanced_toggle_row, column=0, columnspan=3,
+            sticky="w", pady=(4, 0),
+        )
+
+        self.advanced_row = self.advanced_toggle_row + 1
+        self.advanced_tls_frame = tk.Frame(self, bg="white", padx=2, pady=4)
         tk.Label(
-            self,
-            text="Off by default for compatibility with local or self-signed certificates. Encryption is attempted when the server supports it, but its identity is not verified. Enable verification and provide a trusted CA to validate the server.",
-            bg="white",
-            fg="#9A3412",
-            anchor="w",
-            justify=tk.LEFT,
-            wraplength=390,
-        ).grid(row=row + len(self.FIELDS) + 1, column=0, columnspan=3, sticky="w", pady=(0, 2))
+            self.advanced_tls_frame, text="MySQL CA certificate (optional)",
+            bg="white", fg="#334155", anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=(0, 8), pady=3)
+        ca_entry = ttk.Entry(self.advanced_tls_frame, textvariable=self.vars["ssl_ca"], width=24)
+        ca_entry.grid(row=0, column=1, sticky="ew", pady=3)
+        ttk.Button(
+            self.advanced_tls_frame, text="Browse…",
+            command=lambda v=self.vars["ssl_ca"]: self._browse_ca(v),
+        ).grid(row=0, column=2, sticky="w", padx=(6, 0), pady=3)
+        ttk.Checkbutton(
+            self.advanced_tls_frame, text="Verify MySQL server certificate",
+            variable=self.tls_verify,
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(5, 2))
+        tk.Label(
+            self.advanced_tls_frame,
+            text="Certificate verification is optional and off by default for compatibility with local/self-signed servers.",
+            bg="white", fg="#64748B", anchor="w", justify=tk.LEFT, wraplength=390,
+        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        self.advanced_tls_frame.columnconfigure(1, weight=1)
 
         buttons = tk.Frame(self, bg="white")
-        buttons.grid(row=row + len(self.FIELDS) + 2, column=0, columnspan=3, sticky="e", pady=(12, 0))
+        self.connect_buttons = buttons
         ttk.Button(buttons, text="Connect", command=self.on_ok).pack(side=tk.RIGHT)
         ttk.Button(buttons, text="Cancel", command=self.destroy).pack(side=tk.RIGHT, padx=8)
+        self.connect_button_row = self.advanced_row + (1 if self.advanced_open else 0)
+        if self.advanced_open:
+            self.advanced_tls_frame.grid(
+                row=self.advanced_row, column=0, columnspan=3, sticky="ew", pady=(2, 2)
+            )
+        self.connect_buttons.grid(
+            row=self.connect_button_row, column=0, columnspan=3, sticky="e", pady=(8, 0)
+        )
+        self._update_advanced_caption()
 
         self.bind("<Return>", lambda e: self.on_ok())
         self.bind("<Escape>", lambda e: self.destroy())
@@ -723,14 +756,40 @@ class ConnectDialog(tk.Toplevel):
 
         self.columnconfigure(1, weight=1)
         self.update_idletasks()
-        x = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
-        y = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 3
-        self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        self._center_on_screen()
         if parent.winfo_viewable():
             self.transient(parent)
         self.wait_visibility()
         self.grab_set()
         parent.wait_window(self)
+
+    def _update_advanced_caption(self):
+        marker = "▾" if self.advanced_open else "▸"
+        self.advanced_caption.set(f"{marker} Advanced connection security")
+
+    def _toggle_advanced_tls(self):
+        self.advanced_open = not self.advanced_open
+        self._update_advanced_caption()
+        if self.advanced_open:
+            self.advanced_tls_frame.grid(
+                row=self.advanced_row, column=0, columnspan=3, sticky="ew", pady=(2, 2)
+            )
+            self.connect_buttons.grid_configure(row=self.advanced_row + 1)
+        else:
+            self.advanced_tls_frame.grid_remove()
+            self.connect_buttons.grid_configure(row=self.advanced_row)
+        self.update_idletasks()
+        self._center_on_screen()
+
+    def _center_on_screen(self):
+        self.update_idletasks()
+        if self.master.winfo_viewable():
+            x = self.master.winfo_rootx() + (self.master.winfo_width() - self.winfo_width()) // 2
+            y = self.master.winfo_rooty() + (self.master.winfo_height() - self.winfo_height()) // 3
+        else:
+            x = (self.winfo_screenwidth() - self.winfo_width()) // 2
+            y = (self.winfo_screenheight() - self.winfo_height()) // 2
+        self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
     def _browse_ca(self, variable):
         selected = filedialog.askopenfilename(
