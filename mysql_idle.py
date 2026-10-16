@@ -528,9 +528,9 @@ class ConnectDialog(tk.Toplevel):
         self.logo_image = None
         if logo_path.is_file():
             try:
+                # Display the original 96x96 logo unchanged; keep the PhotoImage alive.
                 self.logo_source_image = tk.PhotoImage(file=str(logo_path))
-                scale = max(1, self.logo_source_image.width() // 48)
-                self.logo_image = self.logo_source_image.subsample(scale, scale)
+                self.logo_image = self.logo_source_image
                 tk.Label(header, image=self.logo_image, bg="white").pack(side=tk.LEFT, padx=(0, 12))
             except tk.TclError:
                 self.logo_image = None
