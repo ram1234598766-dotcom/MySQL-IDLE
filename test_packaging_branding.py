@@ -18,44 +18,6 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
         self.assertTrue((ROOT / "assets" / "mysqlidle-logo.png").is_file())
 
-    def test_google_play_assets_have_required_sizes(self):
-        out = ROOT / "dist" / "google-play-assets"
-        expected = {
-            "app-icon-512.png": (512, 512),
-            "feature-graphic-1024x500.png": (1024, 500),
-            "phone-01-connect-and-verify-1080x1920.png": (1080, 1920),
-            "phone-02-unlock-and-pair-1080x1920.png": (1080, 1920),
-            "phone-03-mysql-connection-1080x1920.png": (1080, 1920),
-            "phone-04-sql-editor-and-results-1080x1920.png": (1080, 1920),
-        }
-        source_path = ROOT / "assets" / "mysqlidle-logo.png"
-        with Image.open(source_path) as source_image:
-            source = source_image.convert("RGBA")
-        feature_graphic = Image.new("RGBA", (1024, 500), (11, 16, 32, 255))
-        feature_logo = source.resize((500, 500), Image.Resampling.NEAREST)
-        feature_graphic.alpha_composite(feature_logo, ((1024 - 500) // 2, 0))
-        exact_outputs = {
-            "app-icon-512.png": source.resize((512, 512), Image.Resampling.NEAREST),
-            "feature-graphic-1024x500.png": feature_graphic,
-        }
-        for name, size in expected.items():
-            path = out / name
-            with self.subTest(name=name):
-                self.assertTrue(path.is_file(), f"Missing generated asset: {path}")
-                with Image.open(path) as image:
-                    self.assertEqual(image.size, size)
-                    if name in exact_outputs:
-                        self.assertEqual(image.mode, "RGBA")
-                        self.assertEqual(list(image.getdata()), list(exact_outputs[name].getdata()),
-                                         f"{name} must be only a direct resize of the uploaded image")
-                self.assertLessEqual(path.stat().st_size, 8 * 1024 * 1024)
-        for folder in ("tablet-7-inch", "tablet-10-inch", "desktop"):
-            files = list((out / folder).glob("*.png"))
-            self.assertEqual(len(files), 4)
-            for path in files:
-                with Image.open(path) as image:
-                    self.assertEqual(image.size, (1920, 1080))
-
     def test_windows_mysql_connection_defaults_to_certificate_optional_tls(self):
         source = (ROOT / "mysql_idle.py").read_text(encoding="utf-8")
         self.assertIn("DEFAULT_MYSQL_TLS_VERIFY = False", source)
@@ -149,27 +111,32 @@ class PackagingBrandingTests(unittest.TestCase):
         self.assertIn('IconFilename: "{app}\\_internal\\assets\\mysqlidle.ico"; IconIndex: 0', source)
         self.assertNotIn("Tasks: desktopicon", source)
 
-    def test_readme_logo_is_the_shared_source_for_windows_android_and_store_assets(self):
-        generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
-        logo = ROOT / "assets" / "mysqlidle-logo.png"
+    def test_readme_logo_is_the_exact_shared_source_for_android_and_windows(self):
+        source_path = ROOT / "assets" / "mysqlidle-logo.png"
         android_logo = ROOT / "android-app/app/src/main/res/drawable-nodpi/ic_mysqlidle_logo.png"
-        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
-        play_generator = (ROOT / "tools" / "generate_play_store_assets.py").read_text(encoding="utf-8")
-        self.assertIn('root/"assets"/"mysqlidle-logo.png"', play_generator)
-        self.assertIn("Image.Resampling.NEAREST", play_generator)
-        self.assertNotIn("mysqlidle-logo-reference.webp", generator)
-        self.assertNotIn("mysqlidle-logo-reference.webp", play_generator)
-        self.assertTrue(logo.is_file())
+        self.assertTrue(source_path.is_file())
         self.assertTrue(android_logo.is_file())
-        with Image.open(logo) as source_image:
-            source = source_image.convert("RGBA")
+        self.assertTrue((ROOT / "tools" / "sync_logo_resources.py").is_file())
+        self.assertFalse((ROOT / "tools" / "generate_play_store_assets.py").exists())
+
+        with Image.open(source_path) as source_image:
             self.assertEqual(source_image.format, "PNG")
             self.assertEqual(source_image.size, (96, 96))
-        expected = source.resize((512, 512), Image.Resampling.NEAREST)
-        with Image.open(android_logo) as image:
-            self.assertEqual(image.size, (512, 512))
-            self.assertEqual(list(image.convert("RGBA").getdata()), list(expected.getdata()),
-                             "Android drawable must use the exact README logo, upscaled without blur.")
+        self.assertEqual(
+            android_logo.read_bytes(),
+            source_path.read_bytes(),
+            "Android must embed the exact original PNG bytes, without resizing or editing.",
+        )
+
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("![MySQL IDLE logo](assets/mysqlidle-logo.png)", readme)
+        generator = (ROOT / "tools" / "generate_brand_assets.py").read_text(encoding="utf-8")
+        self.assertIn('LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"', generator)
+        self.assertNotIn("mysqlidle-logo-reference.webp", generator)
+        workflow = (ROOT / ".github" / "workflows" / "build-exe-apk.yml").read_text(encoding="utf-8")
+        self.assertIn("python tools/sync_logo_resources.py", workflow)
+        self.assertNotIn("generate_play_store_assets.py", workflow)
+        self.assertNotIn("MySQLIDLE-Play-Store-Assets.zip", workflow)
 
     def test_android_launcher_and_splash_use_the_supplied_logo(self):
         manifest = (ROOT / "android-app/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
