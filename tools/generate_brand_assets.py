@@ -7,7 +7,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "assets"
-LOGO_SOURCE = ASSETS / "mysqlidle-logo-reference.webp"
+LOGO_SOURCE = ASSETS / "mysqlidle-logo.png"
 
 NAVY = (11, 24, 42)
 DEEP_NAVY = (5, 14, 27)
@@ -22,7 +22,7 @@ def _contained_logo(max_width: int, max_height: int) -> Image.Image:
     with Image.open(LOGO_SOURCE) as source:
         source.load()
         logo = source.convert("RGBA")
-    logo.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+    logo.thumbnail((max_width, max_height), Image.Resampling.NEAREST)
     return logo
 
 
