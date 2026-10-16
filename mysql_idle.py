@@ -54,6 +54,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from feature_governor import APPROVAL_TTL_SECONDS, FeatureGovernor
+from sql_toolbox import explain_sql, format_sql, load_snippets, save_snippets
 from password_auth import (
     MIN_PASSWORD_LENGTH as MIN_MASTER_PASSWORD_LENGTH,
     load_password_record,
@@ -150,6 +151,7 @@ APP_DATA_DIR = get_app_data_dir()
 LOG_DIR = APP_DATA_DIR / "logs"
 CONFIG_PATH = APP_DATA_DIR / "settings.json"
 MASTER_PASSWORD_PATH = APP_DATA_DIR / "master_password.json"
+SQL_SNIPPETS_PATH = APP_DATA_DIR / "sql_snippets.json"
 LEGACY_CONFIG_PATH = Path.home() / ".mysql_idle.json"
 # SQL text can contain literals or tokens. Disk persistence is opt-in.
 SAVE_HISTORY = os.environ.get("MYSQLIDLE_SAVE_HISTORY", "").strip().lower() in {"1", "true", "yes"}
@@ -208,6 +210,8 @@ Keys:
   Ctrl+N          connect                Ctrl+S  save shell log
   F5              run a .sql script      F6      show last result in a grid
   Ctrl+L          clear shell            Ctrl +/-  zoom text
+  Ctrl+Shift+F    format current SQL      Ctrl+Shift+E  prepare EXPLAIN SELECT
+  Ctrl+Shift+C    copy current SQL
   Ctrl+Break      cancel the active MySQL query (server permissions apply)
 
 Tools:
@@ -1393,6 +1397,13 @@ class MySQLIDLE:
         edit_m.add_command(label="Paste", accelerator="Ctrl+V", command=self.do_paste)
         edit_m.add_command(label="Select All", accelerator="Ctrl+A", command=self.do_select_all)
         edit_m.add_separator()
+        edit_m.add_command(label="Format Current SQL", accelerator="Ctrl+Shift+F", command=self.format_current_sql)
+        edit_m.add_command(label="Explain Current SELECT", accelerator="Ctrl+Shift+E", command=self.explain_current_sql)
+        edit_m.add_command(label="Copy Current SQL", accelerator="Ctrl+Shift+C", command=self.copy_current_sql)
+        edit_m.add_separator()
+        edit_m.add_command(label="Save SQL Snippet...", command=self.save_sql_snippet)
+        edit_m.add_command(label="Insert Saved SQL Snippet...", command=self.insert_sql_snippet)
+        edit_m.add_separator()
         edit_m.add_command(label="Clear Shell", accelerator="Ctrl+L", command=self.clear_shell)
         bar.add_cascade(label="Edit", menu=edit_m)
 
@@ -1552,6 +1563,9 @@ class MySQLIDLE:
             "<Control-q>": self.on_close,
             "<Control-l>": self.clear_shell,
             "<Control-Break>": self.cancel_query,
+            "<Control-Shift-f>": self.format_current_sql,
+            "<Control-Shift-e>": self.explain_current_sql,
+            "<Control-Shift-c>": self.copy_current_sql,
             "<F5>": self.run_script,
             "<F6>": self.show_grid,
             "<Control-equal>": lambda: self.zoom(1),
@@ -1794,6 +1808,116 @@ class MySQLIDLE:
 
     def do_select_all(self):
         self.text.tag_add("sel", "1.0", "end-1c")
+
+    def _current_sql(self):
+        """Return only the editable statement, not the terminal transcript."""
+        return self.text.get("input_start", "end-1c").strip()
+
+    def format_current_sql(self):
+        sql = self._current_sql()
+        if not sql:
+            self.status_var.set("Enter SQL before formatting.")
+            return
+        self.set_input(format_sql(sql))
+        self.status_var.set("SQL formatted locally. Review it before execution.")
+
+    def explain_current_sql(self):
+        sql = self._current_sql()
+        try:
+            explained = explain_sql(sql)
+        except ValueError as exc:
+            messagebox.showwarning("Explain SELECT", str(exc), parent=self.root)
+            return
+        self.set_input(explained)
+        self.status_var.set("EXPLAIN inserted. Review the statement, then press Enter to run it.")
+
+    def copy_current_sql(self):
+        sql = self._current_sql()
+        if not sql:
+            self.status_var.set("There is no current SQL statement to copy.")
+            return
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(sql)
+            self.root.update_idletasks()
+            self.status_var.set("Current SQL copied to the clipboard.")
+        except tk.TclError as exc:
+            messagebox.showerror("Copy SQL", f"Could not access the clipboard.\n\n{exc}", parent=self.root)
+
+    def save_sql_snippet(self):
+        sql = self._current_sql()
+        if not sql:
+            messagebox.showinfo("Save SQL Snippet", "Enter a SQL statement first.", parent=self.root)
+            return
+        name = simpledialog.askstring(
+            "Save SQL Snippet",
+            "Name this snippet. Its SQL text will be stored locally on this computer; avoid saving secrets in SQL literals.",
+            parent=self.root,
+        )
+        if name is None:
+            return
+        name = name.strip()
+        if not name or len(name) > 80:
+            messagebox.showerror("Save SQL Snippet", "Choose a name from 1 to 80 characters.", parent=self.root)
+            return
+        snippets = load_snippets(SQL_SNIPPETS_PATH)
+        if name in snippets and not messagebox.askyesno(
+            "Replace SQL Snippet", f"Replace the existing snippet \"{name}\"?", parent=self.root
+        ):
+            return
+        snippets[name] = sql
+        try:
+            save_snippets(SQL_SNIPPETS_PATH, snippets)
+        except (OSError, ValueError) as exc:
+            logging.exception("Could not save SQL snippet")
+            messagebox.showerror("Save SQL Snippet", str(exc), parent=self.root)
+            return
+        self.status_var.set(f"Saved SQL snippet: {name}")
+
+    def insert_sql_snippet(self):
+        snippets = load_snippets(SQL_SNIPPETS_PATH)
+        if not snippets:
+            messagebox.showinfo("Insert SQL Snippet", "No saved snippets were found on this computer.", parent=self.root)
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Insert Saved SQL Snippet")
+        _apply_window_icon(dialog)
+        dialog.transient(self.root)
+        dialog.configure(bg="#F5F8FC")
+        outer = ttk.Frame(dialog, padding=16)
+        outer.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(outer, text="Saved SQL snippets", font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        names = sorted(snippets, key=str.casefold)
+        selected = tk.StringVar(value=names[0])
+        selector = ttk.Combobox(outer, textvariable=selected, values=names, state="readonly")
+        selector.pack(fill=tk.X, pady=(10, 10))
+        preview = tk.Text(outer, height=8, width=62, wrap=tk.WORD, relief=tk.FLAT, padx=10, pady=8)
+        preview.pack(fill=tk.BOTH, expand=True)
+
+        def refresh_preview(_event=None):
+            preview.configure(state=tk.NORMAL)
+            preview.delete("1.0", tk.END)
+            preview.insert("1.0", snippets.get(selected.get(), ""))
+            preview.configure(state=tk.DISABLED)
+
+        def insert_selected():
+            sql = snippets.get(selected.get())
+            if sql:
+                self.set_input(sql)
+                self.status_var.set(f"Inserted SQL snippet: {selected.get()}")
+            dialog.destroy()
+
+        selector.bind("<<ComboboxSelected>>", refresh_preview)
+        buttons = ttk.Frame(outer)
+        buttons.pack(fill=tk.X, pady=(12, 0))
+        ttk.Button(buttons, text="Insert into editor", command=insert_selected).pack(side=tk.RIGHT)
+        ttk.Button(buttons, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=(0, 8))
+        refresh_preview()
+        dialog.geometry("560x360")
+        dialog.minsize(480, 300)
+        dialog.grab_set()
+        dialog.focus_set()
 
     def zoom(self, delta):
         self.font.configure(size=max(6, min(40, int(self.font.cget("size")) + delta)))
