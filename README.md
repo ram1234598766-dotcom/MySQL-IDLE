@@ -163,6 +163,7 @@ MySQL IDLE opens the **Connect to MySQL** window first. The master-password cont
 - The **MySQL account password** field is separate: it must contain the password configured for the MySQL/MariaDB user. The master password is not sent to MySQL as a database credential.
 
 Keep both passwords safe. There is no plaintext master password to recover from the application's settings files.
+
 ## Connect to MySQL or MariaDB
 
 1. Start MySQL IDLE. The **Connect to MySQL** window opens automatically.
@@ -403,14 +404,14 @@ Outputs:
 
 ### Build the Android debug app
 
-Install JDK 17 and Android SDK Platform 36/build tools. From the repository root:
+Install JDK 17 and Android SDK Platform 36/build tools. Generate the shared logo resource from the repository's exact README PNG before compiling:
 
 ```powershell
+py -3.15 -m pip install Pillow
+py -3.15 tools/generate_play_store_assets.py
 Set-Location android-app
 gradle --no-daemon assembleDebug bundleDebug
-```
-
-Expected debug outputs:
+```Expected debug outputs:
 
 - `app\build\outputs\apk\debug\app-debug.apk`
 - `app\build\outputs\bundle\debug\app-debug.aab`
