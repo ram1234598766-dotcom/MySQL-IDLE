@@ -347,7 +347,7 @@ jobs:
         run: python tools/sync_logo_resources.py
       - name: Run mobile HTTPS integration tests
         run: python -m unittest -v test_mobile_companion.py test_feature_governor.py
-      - uses: actions/setup-java@v6.1.0
+      - uses: actions/setup-java@v6.2.0
         with:
           distribution: temurin
           java-version: "17"
