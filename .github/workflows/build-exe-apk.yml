@@ -849,7 +849,7 @@ jobs:
           echo "SHA-256 checksums generated for: ${included[*]}" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish Android-only release
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready != 'true'
-        uses: softprops/action-gh-release@v3.0.3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
           target_commitish: main
@@ -862,7 +862,7 @@ jobs:
             release-assets/SHA256SUMS
       - name: Publish Android and Windows release assets
         if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.windows_ready == 'true'
-        uses: softprops/action-gh-release@v3.0.3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v3.0.0-build.{0}', github.run_number) }}
           target_commitish: main
