@@ -119,6 +119,7 @@ jobs:
             "test_mysql_idle.py",
             "test_password_auth.py",
             "test_feature_governor.py",
+            "test_sql_toolbox.py",
             "test_packaging_branding.py"
           )
           $stdoutPath = Join-Path $env:RUNNER_TEMP "mysqlidle-tests.stdout.log"
@@ -134,7 +135,7 @@ jobs:
           exit 0
       - name: Compile Python modules
         shell: pwsh
-        run: '& $env:MYSQLIDLE_PYTHON -m py_compile feature_governor.py mysql_idle.py mobile_companion.py test_feature_governor.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
+        run: '& $env:MYSQLIDLE_PYTHON -m py_compile feature_governor.py sql_toolbox.py mysql_idle.py mobile_companion.py test_feature_governor.py test_sql_toolbox.py test_mysql_idle.py test_mobile_companion.py test_packaging_branding.py'
       - name: Build one-folder desktop app
         shell: pwsh
         run: '& $env:MYSQLIDLE_PYTHON -m PyInstaller --clean --noconfirm mysql_idle.spec'

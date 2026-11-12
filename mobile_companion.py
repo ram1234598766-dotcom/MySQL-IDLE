@@ -71,21 +71,91 @@ header{padding:18px 16px 12px;border-bottom:1px solid var(--line);position:stick
 <main class="wrap">
 <section id="pairPanel" class="panel"><h2>Unlock and pair with desktop</h2><p class="muted">Enter the same MySQL IDLE master password you set on Windows and the temporary code shown in Tools → Android / Mobile Companion. The Windows desktop rejects a wrong password. Compare the SHA-256 certificate fingerprint before connecting and keep both devices on the same trusted private network.</p><div class="field"><label for="masterPassword">MySQL IDLE master password</label><div class="secret-control"><input id="masterPassword" type="password" autocomplete="current-password" aria-describedby="masterPasswordHint"><button id="masterPasswordToggle" type="button" aria-label="Show master password" aria-pressed="false">Show</button></div><span id="masterPasswordHint" class="hint">This must match the password configured on the Windows desktop. It is checked over HTTPS and is not saved on Android.</span></div><div class="field" style="margin-top:12px"><label for="pairCode">Temporary pairing code</label><input id="pairCode" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="10-digit code from desktop"></div><div class="actions"><button class="primary" id="pairBtn">Unlock and pair</button></div><div id="pairStatus" class="status" style="margin-top:12px">Both the master password and pairing code are required.</div></section>
 <section id="connectionPanel" class="panel connection hidden"><div class="rowhead"><h2>MySQL connection</h2><button id="disconnectBtn" class="danger">Disconnect</button></div><div class="grid"><div class="field"><label for="host">Host (as seen by desktop)</label><input id="host" value="localhost" autocomplete="off"></div><div class="field"><label for="port">Port</label><input id="port" value="3306" inputmode="numeric"></div><div class="field"><label for="user">Username</label><input id="user" autocomplete="username"></div><div class="field"><label for="password">Password (not saved)</label><div class="secret-control"><input id="password" type="password" autocomplete="current-password" aria-describedby="passwordHint"><button id="passwordToggle" type="button" aria-label="Show password" aria-pressed="false">Show</button></div><span id="passwordHint" class="hint">Hidden by default and cleared after a successful connection.</span></div><div class="field wide"><label><input id="tlsVerify" type="checkbox" checked style="width:auto;margin-right:8px"> Require verified TLS to MySQL (recommended)</label><span class="hint">The MySQL server must present a certificate trusted by the desktop system or the CA file below.</span></div><div class="field wide"><label for="tlsCa">MySQL CA certificate path on desktop (optional)</label><input id="tlsCa" autocomplete="off" spellcheck="false" placeholder="C:\\certs\\mysql-ca.pem"><span class="hint">This path is read on the desktop computer, not on the phone.</span></div><div class="field wide"><label for="database">Database (optional)</label><input id="database" autocomplete="off"></div><div class="field wide"><label><input id="autocommit" type="checkbox" checked style="width:auto;margin-right:8px"> Auto-commit each statement</label></div></div><div class="actions"><button class="primary" id="connectBtn">Connect to MySQL</button></div><div class="hint">The desktop computer connects to MySQL. For a local database on that computer, use localhost.</div><div id="dbStatus" class="status" style="margin-top:10px">Not connected</div></section>
-<section id="editorPanel" class="panel editor hidden"><div class="rowhead"><h2>SQL editor</h2><span class="hint">Ctrl/⌘ + Enter to run</span></div><textarea id="sql" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="SQL editor" placeholder="SELECT VERSION();"></textarea><div class="actions"><button id="runBtn" class="primary" disabled>Run SQL</button><button id="clearBtn">Clear</button><button id="historyBackBtn" disabled>Previous</button><button id="historyForwardBtn" disabled>Next</button><span id="historyCount" class="hint">0/50 queries in memory</span><button id="commitBtn" disabled>Commit</button><button id="rollbackBtn" disabled>Rollback</button></div><div class="actions"><select id="templateSelect" aria-label="SQL template"><option value="">Quick SQL template…</option><option value="SELECT VERSION();">Server version</option><option value="SELECT DATABASE();">Current database</option><option value="SHOW DATABASES;">List databases</option><option value="SHOW TABLES;">List tables</option><option value="SELECT NOW();">Current server time</option></select><button id="insertTemplateBtn">Insert template</button></div><div id="queryStatus" class="status" style="margin-top:12px">Ready.</div></section>
+<section id="editorPanel" class="panel editor hidden"><div class="rowhead"><h2>SQL editor</h2><span class="hint">Ctrl/⌘ + Enter to run</span></div><textarea id="sql" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="SQL editor" placeholder="SELECT VERSION();"></textarea><div class="actions"><button id="runBtn" class="primary" disabled>Run SQL</button><button id="clearBtn">Clear</button><button id="historyBackBtn" disabled>Previous</button><button id="historyForwardBtn" disabled>Next</button><span id="historyCount" class="hint">0/50 queries in memory</span><button id="commitBtn" disabled>Commit</button><button id="rollbackBtn" disabled>Rollback</button></div><div class="actions"><select id="templateSelect" aria-label="SQL template"><option value="">Quick SQL template…</option><option value="SELECT VERSION();">Server version</option><option value="SELECT DATABASE();">Current database</option><option value="SHOW DATABASES;">List databases</option><option value="SHOW TABLES;">List tables</option><option value="SELECT NOW();">Current server time</option></select><button id="insertTemplateBtn">Insert template</button></div><div class="actions"><button id="formatSqlBtn">Format SQL</button><button id="explainSqlBtn">Explain SELECT</button><button id="copySqlBtn">Copy SQL</button></div><div class="grid" style="margin-top:10px"><div class="field"><label for="snippetName">Saved SQL snippet name (this session only)</label><input id="snippetName" maxlength="80" placeholder="e.g. Recent orders" autocomplete="off"></div><div class="field"><label for="savedSnippetSelect">Saved snippets</label><select id="savedSnippetSelect"><option value="">No saved snippets</option></select></div></div><div class="actions"><button id="saveSnippetBtn">Save snippet</button><button id="insertSavedSnippetBtn">Insert saved snippet</button></div><div id="queryStatus" class="status" style="margin-top:12px">Ready.</div></section>
 <section id="resultPanel" class="panel result hidden"><div class="rowhead"><h2>Result</h2><button id="exportBtn" disabled>Export complete CSV</button></div><div id="metrics" class="metrics"></div><div id="resultTable" class="table-wrap" role="region" aria-label="Query results" tabindex="0"><div class="muted" style="padding:12px">Run a query to see results.</div></div></section>
 </main><footer>HTTPS is certificate-pinned between the app and desktop. Use a trusted private network; never expose this service to the public internet.</footer>
 <script>
 (()=>{'use strict';
-const $=id=>document.getElementById(id);let sessionToken='';sessionStorage.removeItem('mysqlIdleMobileSession');let lastResult=false;let connected=false;let queryRunning=false;const queryHistory=[];let historyIndex=0;let historyDraft='';
+const $=id=>document.getElementById(id);let sessionToken='';sessionStorage.removeItem('mysqlIdleMobileSession');let lastResult=false;let connected=false;let queryRunning=false;const queryHistory=[];const savedSnippets=new Map();let historyIndex=0;let historyDraft='';
 function status(id,msg,kind=''){const el=$(id);el.textContent=msg;el.className='status'+(kind?' '+kind:'');}
 function updateActionStates(){$('runBtn').disabled=!connected||queryRunning;$('commitBtn').disabled=!connected||queryRunning;$('rollbackBtn').disabled=!connected||queryRunning;$('connectBtn').disabled=queryRunning;$('exportBtn').disabled=!lastResult||queryRunning;}
 function setConnectedState(value){connected=!!value;updateActionStates();}
-function clearSession(){sessionToken='';sessionStorage.removeItem('mysqlIdleMobileSession');setConnectedState(false);lastResult=false;clearQueryHistory();$('sql').value='';updateActionStates();showApp(false);}
+function clearSession(){sessionToken='';sessionStorage.removeItem('mysqlIdleMobileSession');setConnectedState(false);lastResult=false;clearQueryHistory();savedSnippets.clear();updateSavedSnippetOptions();$('sql').value='';updateActionStates();showApp(false);}
 function showApp(show){$('pairPanel').classList.toggle('hidden',show);$('connectionPanel').classList.toggle('hidden',!show);$('editorPanel').classList.toggle('hidden',!show);$('resultPanel').classList.toggle('hidden',!show);}
 function updateHistoryControls(){const total=queryHistory.length;$('historyBackBtn').disabled=!total||historyIndex<=0;$('historyForwardBtn').disabled=!total||historyIndex>=total;$('historyCount').textContent=total+'/50 queries in memory';}
 function rememberQuery(sql){if(queryHistory[queryHistory.length-1]!==sql){queryHistory.push(sql);if(queryHistory.length>50)queryHistory.shift();}historyIndex=queryHistory.length;historyDraft='';updateHistoryControls();}
 function moveHistory(direction){if(!queryHistory.length)return;const input=$('sql');if(historyIndex===queryHistory.length)historyDraft=input.value;const next=Math.max(0,Math.min(queryHistory.length,historyIndex+direction));if(next===historyIndex)return;historyIndex=next;input.value=historyIndex===queryHistory.length?historyDraft:queryHistory[historyIndex];input.focus();input.setSelectionRange(input.value.length,input.value.length);updateHistoryControls();}
 function clearQueryHistory(){queryHistory.length=0;historyIndex=0;historyDraft='';updateHistoryControls();}
+function updateSavedSnippetOptions(){
+ const select=$('savedSnippetSelect');
+ if(!select)return;
+ select.replaceChildren(new Option('Choose a saved snippet…',''));
+ for(const name of savedSnippets.keys())select.add(new Option(name,name));
+}
+function splitSqlSegments(sql){
+ const parts=[];let i=0,start=0,n=sql.length;
+ const add=(kind,from,to)=>{if(to>from)parts.push({kind,text:sql.slice(from,to)})};
+ while(i<n){
+  const ch=sql[i];let opaqueEnd=-1;
+  if(ch==="'"||ch==='"'||ch==='\`'){
+   const quote=ch;let j=i+1;
+   while(j<n){
+    if(sql[j]==='\\'&&quote!=='\`'){j=Math.min(n,j+2);continue}
+    if(sql[j]===quote){if(j+1<n&&sql[j+1]===quote){j+=2;continue}j++;break}
+    j++;
+   }
+   opaqueEnd=j;
+  }else if(ch==='#'||(sql.startsWith('--',i)&&(i+2===n||/\s/.test(sql[i+2])))){
+   const newline=sql.indexOf('\n',i);opaqueEnd=newline<0?n:newline+1;
+  }else if(sql.startsWith('/*',i)){
+   const end=sql.indexOf('*/',i+2);opaqueEnd=end<0?n:end+2;
+  }
+  if(opaqueEnd>=0){add('code',start,i);add('opaque',i,opaqueEnd);i=opaqueEnd;start=i}
+  else i++;
+ }
+ add('code',start,n);
+ return parts;
+}
+const SQL_KEYWORDS="ALL ALTER AND AS ASC BETWEEN BY CASE CAST COLLATE CROSS CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP DATABASE DATABASES DESC DISTINCT ELSE END EXISTS FALSE FROM FULL GROUP HAVING IN INNER INTERSECT IS JOIN LEFT LIKE LIMIT NATURAL NOT NULL OFFSET ON OR ORDER OUTER RIGHT SELECT SET SHOW TABLES THEN TRUE UNION UNKNOWN USE USING VALUES WHEN WHERE WITH".split(/\s+/);
+function formatSqlCode(code){
+ code=code.replace(/\s+/g,' ');
+ const pattern=new RegExp('\\b(?:'+SQL_KEYWORDS.slice().sort((a,b)=>b.length-a.length).join('|')+')\\b','gi');
+ code=code.replace(pattern,word=>word.toUpperCase());
+ code=code.replace(/[ \t]+(?=(?:FROM|WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|UNION(?:\s+ALL)?|LEFT(?:\s+OUTER)?\s+JOIN|RIGHT(?:\s+OUTER)?\s+JOIN|INNER\s+JOIN|CROSS\s+JOIN|JOIN)\b)/gi,'\n');
+ code=code.replace(/[ \t]*(<=|>=|<>|!=|=|<|>)[ \t]*/g,' $1 ');
+ code=code.replace(/,[ \t]*/g,', ');
+ code=code.replace(/[ \t]+\n/g,'\n').replace(/\n[ \t]+/g,'\n').replace(/\n{2,}/g,'\n');
+ return code;
+}
+function formatSql(sql){
+ if(!sql.trim())return sql;
+ return splitSqlSegments(sql).map(p=>p.kind==='code'?formatSqlCode(p.text):p.text).join('').trim();
+}
+function buildExplainSql(sql){
+ if(!sql.trim())throw new Error('Enter a SELECT statement first.');
+ const code=splitSqlSegments(sql).map(p=>p.kind==='code'?p.text:' ').join('').trim();
+ if(!/^SELECT\b/i.test(code))throw new Error('Explain Plan only accepts a single SELECT statement.');
+ const withoutFinal=code.endsWith(';')?code.slice(0,-1).trimEnd():code;
+ if(withoutFinal.includes(';'))throw new Error('Explain Plan accepts one statement at a time.');
+ const parts=splitSqlSegments(sql.trim());let inserted=false;let out='';
+ for(const part of parts){
+  if(!inserted&&part.kind==='code'){
+   const match=/\S/.exec(part.text);
+   if(match){out+=part.text.slice(0,match.index)+'EXPLAIN '+part.text.slice(match.index);inserted=true;continue}
+  }
+  out+=part.text;
+ }
+ if(!inserted)throw new Error('Could not locate the SELECT statement.');
+ return out;
+}
+async function copyText(value){
+ try{
+  if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(value);return}
+ }catch(_){}
+ const temporary=document.createElement('textarea');temporary.value=value;temporary.setAttribute('readonly','');temporary.style.position='fixed';temporary.style.opacity='0';document.body.append(temporary);temporary.select();
+ const copied=document.execCommand('copy');temporary.remove();
+ if(!copied)throw new Error('Clipboard access is unavailable in this WebView.');
+}
 async function api(path,data,method='POST'){const headers={};if(method!=='GET')headers['Content-Type']='application/json';if(sessionToken)headers.Authorization='Bearer '+sessionToken;const response=await fetch(path,{method,headers,body:method==='GET'?undefined:JSON.stringify(data||{})});let json={};try{json=await response.json()}catch{}if(response.status===401){const message=json.error||'Pairing expired. Pair again.';clearSession();throw new Error(message)}if(!response.ok||json.ok===false)throw Object.assign(new Error(json.error||('Request failed ('+response.status+')')),json);return json;}
 $('passwordToggle').onclick=()=>{const reveal=$('password').type==='password';$('password').type=reveal?'text':'password';$('passwordToggle').textContent=reveal?'Hide':'Show';$('passwordToggle').setAttribute('aria-pressed',String(reveal));$('passwordToggle').setAttribute('aria-label',reveal?'Hide password':'Show password');};
 $('masterPasswordToggle').onclick=()=>{const reveal=$('masterPassword').type==='password';$('masterPassword').type=reveal?'text':'password';$('masterPasswordToggle').textContent=reveal?'Hide':'Show';$('masterPasswordToggle').setAttribute('aria-pressed',String(reveal));$('masterPasswordToggle').setAttribute('aria-label',reveal?'Hide master password':'Show master password');};
@@ -98,7 +168,13 @@ $('exportBtn').onclick=async()=>{try{const response=await fetch('/api/export',{h
 async function txn(action){try{const r=await api('/api/transaction',{action});status('queryStatus',r.message,'good')}catch(e){status('queryStatus',e.message,'bad')}}
 $('commitBtn').onclick=()=>txn('commit');$('rollbackBtn').onclick=()=>txn('rollback');
 $('disconnectBtn').onclick=async()=>{try{await api('/api/disconnect',{});setConnectedState(false);status('dbStatus','Disconnected');$('connectionBadge').textContent='Paired · not connected';lastResult=false;clearQueryHistory();$('sql').value='';updateActionStates();$('resultPanel').classList.add('hidden')}catch(e){status('dbStatus',e.message,'bad')}};
-$('clearBtn').onclick=()=>{$('sql').value='';historyIndex=queryHistory.length;historyDraft='';updateHistoryControls();$('sql').focus()};$('historyBackBtn').onclick=()=>moveHistory(-1);$('historyForwardBtn').onclick=()=>moveHistory(1);$('insertTemplateBtn').onclick=()=>{const value=$('templateSelect').value;if(!value){status('queryStatus','Choose a template first.');return}const input=$('sql');input.value=(input.value.trim()?input.value+'\n':'')+value;input.focus();input.setSelectionRange(input.value.length,input.value.length);status('queryStatus','Template inserted. Review it before running.','good')};$('sql').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('runBtn').click()}});
+$('clearBtn').onclick=()=>{$('sql').value='';historyIndex=queryHistory.length;historyDraft='';updateHistoryControls();$('sql').focus()};$('historyBackBtn').onclick=()=>moveHistory(-1);$('historyForwardBtn').onclick=()=>moveHistory(1);$('insertTemplateBtn').onclick=()=>{const value=$('templateSelect').value;if(!value){status('queryStatus','Choose a template first.');return}const input=$('sql');input.value=(input.value.trim()?input.value+'\n':'')+value;input.focus();input.setSelectionRange(input.value.length,input.value.length);status('queryStatus','Template inserted. Review it before running.','good')};
+$('formatSqlBtn').onclick=()=>{const input=$('sql');if(!input.value.trim()){status('queryStatus','Enter SQL before formatting.');return}input.value=formatSql(input.value);input.focus();status('queryStatus','SQL formatted locally. Review it before execution.','good')};
+$('explainSqlBtn').onclick=()=>{try{$('sql').value=buildExplainSql($('sql').value);$('sql').focus();status('queryStatus','EXPLAIN inserted. Review the statement, then tap Run SQL.','good')}catch(e){status('queryStatus',e.message,'bad')}};
+$('copySqlBtn').onclick=async()=>{const sql=$('sql').value;if(!sql.trim()){status('queryStatus','There is no SQL to copy.');return}try{await copyText(sql);status('queryStatus','SQL copied to clipboard.','good')}catch(e){status('queryStatus',e.message,'bad')}};
+$('saveSnippetBtn').onclick=()=>{const name=$('snippetName').value.trim();const sql=$('sql').value;if(!name||name.length>80){status('queryStatus','Choose a snippet name from 1 to 80 characters.','bad');return}if(!sql.trim()){status('queryStatus','Enter SQL before saving a snippet.','bad');return}if(sql.length>65536){status('queryStatus','Snippets are limited to 64 KiB each.','bad');return}if(!savedSnippets.has(name)&&savedSnippets.size>=20){status('queryStatus','This session already has 20 saved snippets.','bad');return}savedSnippets.set(name,sql);updateSavedSnippetOptions();$('savedSnippetSelect').value=name;status('queryStatus','Snippet saved in memory for this mobile session only.','good')};
+$('insertSavedSnippetBtn').onclick=()=>{const name=$('savedSnippetSelect').value;const sql=savedSnippets.get(name);if(!sql){status('queryStatus','Choose a saved snippet first.');return}$('sql').value=sql;$('sql').focus();$('sql').setSelectionRange(sql.length,sql.length);status('queryStatus','Snippet inserted. Review it before running.','good')};
+$('sql').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('runBtn').click()}});
 updateHistoryControls();if(sessionToken){api('/api/state',{},'GET').then(r=>{showApp(true);setConnectedState(!!r.connected);if(r.connected){$('connectionBadge').textContent='Connected · '+(r.database||'no database');status('dbStatus','Connected to '+r.serverVersion,'good')}else{$('connectionBadge').textContent='Paired · not connected'}updateActionStates()}).catch(()=>clearSession())}else{showApp(false);updateActionStates()}
 })();</script></body></html>'''
 
